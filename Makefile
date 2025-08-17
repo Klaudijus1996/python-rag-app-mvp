@@ -6,6 +6,10 @@
 help:
 	@echo "Python RAG App MVP - Available commands:"
 	@echo ""
+	@echo "Setup:"
+	@echo "  setup       - Create directories and initialize environment"
+	@echo "  quickstart  - Full setup and start (install + setup + ingest + dev)"
+	@echo ""
 	@echo "Development:"
 	@echo "  install     - Install dependencies (local)"
 	@echo "  dev         - Run in development mode (local)"
@@ -124,17 +128,26 @@ clean:
 
 clean-all: clean
 	@echo "Deep cleaning..."
-	rm -rf store/
+	rm -rf store/*
 	rm -rf storage/logs/*
 
 # Environment setup
-setup-env:
+setup:
 	@echo "Setting up environment..."
-	cp .env.example .env
-	@echo "Please edit .env file with your API keys"
+	@echo "Creating required directories..."
+	@mkdir -p store storage/logs data
+	@echo "Directories created successfully"
+	@if [ -f .env.example ]; then \
+		cp .env.example .env; \
+		echo "Please edit .env file with your API keys"; \
+	else \
+		echo "Warning: .env.example not found. Please create .env manually"; \
+	fi
+
+setup-env: setup
 
 # Quick start
-quickstart: install setup-env ingest dev
+quickstart: install setup ingest dev
 
 # Health check
 health:
