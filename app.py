@@ -1,6 +1,5 @@
 import os
 import time
-import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -18,6 +17,10 @@ from schema import (
 from chains import RAGSystem
 import ingest
 
+# Import our logging system
+from logging_config import setup_logging, get_logger, cleanup_logging
+from middleware import RequestLoggingMiddleware, PerformanceMonitoringMiddleware, ErrorTrackingMiddleware
+
 # Load environment variables
 load_dotenv()
 
@@ -28,12 +31,12 @@ APP_PORT = int(os.getenv("APP_PORT", "8000"))
 INDEX_DIR = "store/faiss"
 
 # Setup logging
-log_level = logging.DEBUG if APP_ENV == "dev" else logging.INFO
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+setup_logging(
+    app_env=APP_ENV,
+    use_async=True,
+    use_json=APP_ENV == "production"  # Use JSON logs in production
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Global RAG system instance
 rag_system: Optional[RAGSystem] = None
@@ -60,6 +63,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down RAG application")
+    cleanup_logging()  # Clean up async logging handlers
 
 
 # FastAPI app
@@ -69,6 +73,21 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add logging middleware
+app.add_middleware(
+    RequestLoggingMiddleware,
+    log_request_body=APP_ENV == "dev",  # Only log request bodies in development
+    log_response_body=False,  # Disable response body logging for performance
+    exclude_paths=["/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"]
+)
+
+app.add_middleware(
+    PerformanceMonitoringMiddleware,
+    slow_request_threshold=5.0  # Log requests taking longer than 5 seconds
+)
+
+app.add_middleware(ErrorTrackingMiddleware)
 
 # CORS middleware
 app.add_middleware(

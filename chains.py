@@ -212,20 +212,33 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
             max_tokens=int(os.getenv("RAG_MAX_TOKENS_PER_RESPONSE", "1000"))
         )
         
-        # Build the chain using LCEL
-        rag_chain = RunnableMap({
-            "question": RunnablePassthrough(),
-            "docs": retriever,
-        }).assign(
-            context=lambda x: format_docs(x["docs"]),
-            query_type=lambda x: detect_query_type(x["question"]).value
-        ) | prompt | llm | StrOutputParser()
-        
         # Add session-based memory
         def get_session_history(session_id: str) -> ChatMessageHistory:
             if session_id not in session_store:
                 session_store[session_id] = ChatMessageHistory()
             return session_store[session_id]
+        
+        # Build chain that works directly with RunnableWithMessageHistory
+        def rag_chain_func(inputs: dict):
+            question = inputs["question"]
+            # Get documents
+            docs = retriever.invoke(question)
+            # Prepare inputs for prompt
+            prompt_inputs = {
+                "question": question,
+                "context": format_docs(docs),
+                "query_type": detect_query_type(question).value,
+                "history": inputs.get("history", [])  # History will be injected by RunnableWithMessageHistory
+            }
+            # Run through prompt -> LLM -> parser
+            messages = prompt.format_messages(**prompt_inputs)
+            response = llm.invoke(messages)
+            # Extract content from AIMessage
+            return response.content if hasattr(response, 'content') else str(response)
+        
+        # Create a simple runnable from our function
+        from langchain_core.runnables import RunnableLambda
+        rag_chain = RunnableLambda(rag_chain_func)
         
         # Wrap with memory
         rag_with_memory = RunnableWithMessageHistory(
@@ -290,8 +303,9 @@ class RAGSystem:
             raise RuntimeError("RAG chain not initialized")
         
         try:
+            # Pass the question as a dictionary input since RunnableMap expects dict
             response = self.rag_chain.invoke(
-                question,
+                {"question": question},
                 config={"configurable": {"session_id": session_id}}
             )
             return response
