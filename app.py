@@ -111,7 +111,9 @@ async def health():
     if index_ready and rag_system:
         try:
             # Try to get some basic info about the index
-            total_chunks = "available"  # Could implement actual count
+            # For now, we'll use None since we don't have an easy way to count chunks
+            # This could be implemented by accessing the vector store metadata
+            total_chunks = None  # Could implement actual count later
         except Exception:
             pass
     
