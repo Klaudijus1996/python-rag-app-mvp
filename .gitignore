@@ -206,5 +206,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Vector store and generated data
+store/
 storage/logs/*
 !storage/logs/.gitignore

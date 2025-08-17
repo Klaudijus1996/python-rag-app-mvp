@@ -10,8 +10,11 @@ help:
 	@echo "  install     - Install dependencies (local)"
 	@echo "  dev         - Run in development mode (local)"
 	@echo "  test        - Run tests (in Docker container)"
+	@echo "  test-coverage - Run tests with coverage (in Docker container)"
 	@echo "  lint        - Run linting (in Docker container)"
+	@echo "  lint-fix    - Run linting with auto-fix (in Docker container)"
 	@echo "  format      - Format code (in Docker container)"
+	@echo "  format-check - Check code formatting (in Docker container)"
 	@echo ""
 	@echo "Data:"
 	@echo "  ingest      - Run data ingestion (in Docker container)"
@@ -51,11 +54,19 @@ test-coverage:
 # Code quality
 lint:
 	@echo "Running linting in Docker container..."
-	docker-compose exec rag-app sh -c "if command -v ruff >/dev/null 2>&1; then ruff check .; elif command -v flake8 >/dev/null 2>&1; then flake8 .; else echo 'No linter found. Install ruff or flake8'; fi"
+	docker-compose exec rag-app ruff check .
+
+lint-fix:
+	@echo "Running linting with auto-fix in Docker container..."
+	docker-compose exec rag-app ruff check . --fix
 
 format:
 	@echo "Formatting code in Docker container..."
-	docker-compose exec rag-app sh -c "if command -v ruff >/dev/null 2>&1; then ruff format .; elif command -v black >/dev/null 2>&1; then black .; else echo 'No formatter found. Install ruff or black'; fi"
+	docker-compose exec rag-app ruff format .
+
+format-check:
+	@echo "Checking code formatting in Docker container..."
+	docker-compose exec rag-app ruff format . --check
 
 # Data ingestion
 ingest:
