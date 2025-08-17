@@ -1,199 +1,213 @@
 # Makefile for Python RAG App MVP
+# All commands run in Docker containers - no local Python dependencies needed
 
-.PHONY: help install dev test clean build run ingest docker-build docker-run docker-stop lint format
+# Docker configuration
+DOCKER_COMPOSE = docker compose
+DOCKER_DIR = docker
+DEV_COMPOSE_FILE = $(DOCKER_DIR)/docker-compose.dev.yml
+PROD_COMPOSE_FILE = $(DOCKER_DIR)/docker-compose.prod.yml
+
+.PHONY: help setup quickstart build build-prod dev prod test test-coverage lint format ingest clean stop logs shell health
 
 # Default target
 help:
 	@echo "Python RAG App MVP - Available commands:"
 	@echo ""
-	@echo "Setup:"
-	@echo "  setup       - Create directories and initialize environment"
-	@echo "  quickstart  - Full setup and start (install + setup + ingest + dev)"
+	@echo "Quick Start:"
+	@echo "  setup       - Copy .env.example to .env if needed"
+	@echo "  quickstart  - Full development setup and start"
 	@echo ""
 	@echo "Development:"
-	@echo "  install     - Install dependencies (local)"
-	@echo "  dev         - Run in development mode (local)"
-	@echo "  test        - Run tests (in Docker container)"
-	@echo "  test-coverage - Run tests with coverage (in Docker container)"
-	@echo "  lint        - Run linting (in Docker container)"
-	@echo "  lint-fix    - Run linting with auto-fix (in Docker container)"
-	@echo "  format      - Format code (in Docker container)"
-	@echo "  format-check - Check code formatting (in Docker container)"
-	@echo ""
-	@echo "Data:"
-	@echo "  ingest      - Run data ingestion (in Docker container)"
-	@echo "  ingest-force - Force re-ingestion (in Docker container)"
-	@echo ""
-	@echo "Docker:"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-run   - Run with Docker Compose"
-	@echo "  docker-stop  - Stop Docker containers"
-	@echo "  docker-logs  - View Docker logs"
+	@echo "  build       - Build development Docker image"
+	@echo "  dev         - Start development environment"
+	@echo "  test        - Run tests in development container"
+	@echo "  test-coverage - Run tests with coverage"
+	@echo "  lint        - Run linting"
+	@echo "  format      - Format code"
+	@echo "  ingest      - Run data ingestion"
 	@echo ""
 	@echo "Production:"
-	@echo "  build       - Build production image"
-	@echo "  run         - Run production server"
-	@echo "  clean       - Clean generated files"
-
-# Development setup
-install:
-	python -m pip install --upgrade pip
-	pip install -r requirements.txt
-
-dev:
-	@echo "Starting development server..."
-	uvicorn app:app --reload --host 0.0.0.0 --port 8000
-
-# Testing
-test:
-	@echo "Running tests in Docker container..."
-	@docker-compose ps | grep -q "rag-app.*Up" || { echo "Container not running. Starting..."; docker-compose up -d; sleep 5; }
-	docker-compose exec rag-app python -m pytest -v tests/
-
-test-coverage:
-	@echo "Running tests with coverage in Docker container..."
-	@docker-compose ps | grep -q "rag-app.*Up" || { echo "Container not running. Starting..."; docker-compose up -d; sleep 5; }
-	docker-compose exec rag-app python -m pytest --cov=. --cov-report=html --cov-report=term tests/
-
-# Code quality
-lint:
-	@echo "Running linting in Docker container..."
-	docker-compose exec rag-app ruff check .
-
-lint-fix:
-	@echo "Running linting with auto-fix in Docker container..."
-	docker-compose exec rag-app ruff check . --fix
-
-format:
-	@echo "Formatting code in Docker container..."
-	docker-compose exec rag-app ruff format .
-
-format-check:
-	@echo "Checking code formatting in Docker container..."
-	docker-compose exec rag-app ruff format . --check
-
-# Data ingestion
-ingest:
-	@echo "Running data ingestion in Docker container..."
-	docker-compose exec rag-app python ingest.py
-
-ingest-force:
-	@echo "Force re-ingesting data in Docker container..."
-	docker-compose exec rag-app rm -rf store/faiss
-	docker-compose exec rag-app python ingest.py
-
-# Docker operations
-docker-build:
-	@echo "Building Docker image..."
-	docker build -t python-rag-app-mvp .
-
-docker-run:
-	@echo "Starting with Docker Compose..."
-	docker-compose up -d
-
-docker-run-with-redis:
-	@echo "Starting with Docker Compose (including Redis)..."
-	docker-compose --profile with-redis up -d
-
-docker-stop:
-	@echo "Stopping Docker containers..."
-	docker-compose down
-
-docker-logs:
-	@echo "Viewing Docker logs..."
-	docker-compose logs -f
-
-docker-shell:
-	@echo "Opening shell in container..."
-	docker-compose exec rag-app bash
-
-# Production
-build: docker-build
-
-run:
-	@echo "Starting production server..."
-	python app.py
-
-# Cleanup
-clean:
-	@echo "Cleaning up..."
-	find . -type f -name "*.pyc" -delete
-	find . -type d -name "__pycache__" -delete
-	find . -type d -name ".pytest_cache" -delete
-	rm -rf htmlcov/
-	rm -rf .coverage
-	rm -rf dist/
-	rm -rf build/
-	rm -rf *.egg-info/
-
-clean-all: clean
-	@echo "Deep cleaning..."
-	rm -rf store/*
-	rm -rf storage/logs/*
+	@echo "  build-prod  - Build production Docker image"
+	@echo "  prod        - Start production environment"
+	@echo "  test-prod   - Test production build"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  stop        - Stop all containers"
+	@echo "  logs        - View container logs"
+	@echo "  shell       - Open shell in development container"
+	@echo "  health      - Check application health"
+	@echo "  clean       - Clean up containers and images"
 
 # Environment setup
 setup:
 	@echo "Setting up environment..."
-	@echo "Creating required directories..."
-	@mkdir -p store storage/logs data
-	@echo "Directories created successfully"
-	@if [ -f .env.example ]; then \
-		cp .env.example .env; \
-		echo "Please edit .env file with your API keys"; \
+	@if [ ! -f .env ]; then \
+		if [ -f .env.example ]; then \
+			cp .env.example .env; \
+			echo "✓ Created .env from .env.example"; \
+			echo "⚠️  Please edit .env file with your API keys"; \
+		else \
+			echo "❌ .env.example not found. Please create .env manually"; \
+			exit 1; \
+		fi; \
 	else \
-		echo "Warning: .env.example not found. Please create .env manually"; \
+		echo "✓ .env file already exists"; \
 	fi
 
-setup-env: setup
+# Validate required environment variables
+validate-env:
+	@echo "Validating environment variables..."
+	@if [ ! -f .env ]; then \
+		echo "❌ .env file not found. Run 'make setup' first"; \
+		exit 1; \
+	fi
+	@if ! grep -q "OPENAI_API_KEY=" .env || grep -q "OPENAI_API_KEY=$$" .env; then \
+		echo "⚠️  OPENAI_API_KEY not set in .env file"; \
+		echo "Please add your OpenAI API key to continue"; \
+		exit 1; \
+	fi
+	@echo "✓ Environment variables validated"
 
-# Quick start
-quickstart: install setup ingest dev
+# Development commands
+build:
+	@echo "Building development Docker image..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) build
 
-# Health check
+dev: setup validate-env
+	@echo "Starting development environment..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d
+	@echo "✓ Development server started at http://localhost:8000"
+	@echo "  API docs: http://localhost:8000/docs"
+	@echo "  ReDoc: http://localhost:8000/redoc"
+
+# Production commands
+build-prod:
+	@echo "Building production Docker image..."
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) build
+
+prod: setup validate-env
+	@echo "Starting production environment..."
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) up -d
+	@echo "✓ Production server started at http://localhost:8000"
+
+test-prod: build-prod
+	@echo "Testing production build..."
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) up -d
+	@sleep 10
+	@echo "Running health check..."
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✓ Production build test passed"; \
+	else \
+		echo "❌ Production build test failed"; \
+		exit 1; \
+	fi
+	@$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) down
+
+# Testing
+test:
+	@echo "Running tests in development container..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python -m pytest -v tests/
+
+test-coverage:
+	@echo "Running tests with coverage..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python -m pytest --cov=. --cov-report=html --cov-report=term tests/
+
+# Code quality
+lint:
+	@echo "Running linting..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app ruff check .
+
+lint-fix:
+	@echo "Running linting with auto-fix..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app ruff check . --fix
+
+format:
+	@echo "Formatting code..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app ruff format .
+
+format-check:
+	@echo "Checking code formatting..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app ruff format . --check
+
+# Data ingestion
+ingest:
+	@echo "Running data ingestion..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python ingest.py
+
+ingest-force:
+	@echo "Force re-ingesting data..."
+	@$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) ps | grep -q "rag-app.*Up" || { echo "Starting dev container..."; $(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d; sleep 5; }
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app rm -rf store/faiss
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python ingest.py
+
+# Quick start - complete development setup
+quickstart: setup validate-env build
+	@echo "Starting quickstart setup..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d
+	@echo "Waiting for container to be ready..."
+	@sleep 10
+	@echo "Running data ingestion..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python ingest.py
+	@echo ""
+	@echo "🚀 Quickstart complete!"
+	@echo "   Development server: http://localhost:8000"
+	@echo "   API docs: http://localhost:8000/docs"
+	@echo "   ReDoc: http://localhost:8000/redoc"
+
+# Utility commands
+stop:
+	@echo "Stopping all containers..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) down
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) down
+
+logs:
+	@echo "Viewing development container logs..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) logs -f
+
+logs-prod:
+	@echo "Viewing production container logs..."
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) logs -f
+
+shell:
+	@echo "Opening shell in development container..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app bash
+
 health:
 	@echo "Checking application health..."
-	@curl -f http://localhost:8000/health || echo "Application is not running"
-
-# View logs
-logs:
-	@echo "Viewing application logs..."
-	@if [ -f "storage/logs/app.log" ]; then \
-		tail -f storage/logs/app.log; \
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✓ Application is healthy"; \
 	else \
-		echo "No log file found"; \
+		echo "❌ Application is not responding"; \
+		exit 1; \
 	fi
 
-# Dependencies update
-update-deps:
-	@echo "Updating dependencies..."
-	pip-compile requirements.in --upgrade || pip freeze > requirements.txt
+# Cleanup
+clean:
+	@echo "Cleaning up containers and images..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) down -v
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) down -v
+	docker system prune -f
+	@echo "✓ Cleanup complete"
 
-# Database/Index management
-reset-index:
-	@echo "Resetting vector index..."
-	rm -rf store/faiss
-	$(MAKE) ingest
+clean-all: clean
+	@echo "Deep cleaning..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) down -v --rmi all
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) down -v --rmi all
+	rm -rf store/*
+	rm -rf storage/logs/*
 
-# Performance testing
-perf-test:
-	@echo "Running performance tests..."
-	@if command -v ab >/dev/null 2>&1; then \
-		ab -n 100 -c 10 http://localhost:8000/health; \
-	else \
-		echo "Apache Bench (ab) not found. Install apache2-utils"; \
-	fi
+# Redis support
+dev-with-redis: setup validate-env
+	@echo "Starting development environment with Redis..."
+	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) --profile with-redis up -d
 
-# Security scan
-security-scan:
-	@echo "Running security scan..."
-	@if command -v safety >/dev/null 2>&1; then \
-		safety check; \
-	else \
-		echo "Safety not found. Install with: pip install safety"; \
-	fi
-
-# Documentation
-docs:
-	@echo "Starting documentation server..."
-	@echo "API docs available at: http://localhost:8000/docs"
-	@echo "ReDoc available at: http://localhost:8000/redoc"
+prod-with-redis: setup validate-env
+	@echo "Starting production environment with Redis..."
+	$(DOCKER_COMPOSE) -f $(PROD_COMPOSE_FILE) --profile with-redis up -d

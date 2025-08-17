@@ -1,0 +1,47 @@
+services:
+  rag-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: python-rag-app-mvp-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - PYTHONPATH=/app
+    env_file:
+      - ../.env
+    volumes:
+      - ..:/app
+      - ../data:/app/data:ro
+      - ../store:/app/store
+      - ../storage/logs:/app/storage/logs
+    restart: unless-stopped
+    command: ["python", "app.py"]
+    networks:
+      - rag-network-dev
+    stdin_open: true
+    tty: true
+
+  # Optional: Add Redis for development testing
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    restart: unless-stopped
+    networks:
+      - rag-network-dev
+    profiles:
+      - with-redis
+
+networks:
+  rag-network-dev:
+    driver: bridge
+
+volumes:
+  redis_data_dev:

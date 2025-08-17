@@ -1,3 +1,4 @@
+# Production Dockerfile for Python RAG App MVP
 # Multi-stage build for optimized production image
 FROM python:3.11-slim as builder
 
@@ -17,7 +18,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production stage
 FROM python:3.11-slim
 
-# Install runtime dependencies
+# Install runtime dependencies and create user
 RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/* \
@@ -32,15 +33,18 @@ WORKDIR /app
 # Copy application code
 COPY . .
 
-# Create necessary directories
+# Create necessary directories and set permissions
 RUN mkdir -p store tests storage/logs && \
     chown -R appuser:appuser /app
 
-# Switch to non-root user
+# Switch to non-root user for security
 USER appuser
 
 # Update PATH to include user local bin
 ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# Set production environment
+ENV APP_ENV=production
 
 # Expose port
 EXPOSE 8000
@@ -49,5 +53,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command
+# Production command
 CMD ["python", "app.py"]
