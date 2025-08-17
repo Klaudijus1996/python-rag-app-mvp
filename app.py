@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("Vector index not found. Run ingestion first.")
     except Exception as e:
-        logger.error(f"Failed to initialize RAG system: {e}")
+        logger.error(f"Failed to initialize RAG system: {e}", exc_info=True)
         # Continue startup without RAG system
     
     yield
@@ -202,7 +202,7 @@ async def chat(
             detail=str(e)
         )
     except Exception as e:
-        logger.error(f"Chat processing error: {e}")
+        logger.error(f"Chat processing error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing your request"
@@ -246,7 +246,7 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
                 rag_system = RAGSystem()
                 logger.info("RAG system re-initialized after ingestion")
             except Exception as e:
-                logger.error(f"Failed to re-initialize RAG system: {e}")
+                logger.error(f"Failed to re-initialize RAG system: {e}", exc_info=True)
         
         logger.info(f"Ingestion completed in {processing_time:.2f}s")
         
@@ -266,7 +266,7 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
             detail="Product data file not found"
         )
     except Exception as e:
-        logger.error(f"Ingestion error: {e}")
+        logger.error(f"Ingestion error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ingestion failed: {str(e)}"
@@ -283,7 +283,7 @@ async def get_session_info(
         session_info = rag.get_session_info(session_id)
         return session_info
     except Exception as e:
-        logger.error(f"Error getting session info: {e}")
+        logger.error(f"Error getting session info: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve session information"
@@ -303,7 +303,7 @@ async def clear_session(
         else:
             return {"message": f"Session {session_id} not found"}
     except Exception as e:
-        logger.error(f"Error clearing session: {e}")
+        logger.error(f"Error clearing session: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to clear session"
@@ -325,7 +325,7 @@ async def retrieve_documents(
             "document_count": len(result["documents"])
         }
     except Exception as e:
-        logger.error(f"Document retrieval error: {e}")
+        logger.error(f"Document retrieval error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve documents"

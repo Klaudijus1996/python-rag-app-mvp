@@ -131,7 +131,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             self.logger.info("Incoming request", extra=log_data)
             
         except Exception as e:
-            self.logger.error(f"Error logging request start: {e}")
+            self.logger.error(f"Error logging request start: {e}", exc_info=True)
     
     async def _log_request_end(
         self, 
@@ -182,7 +182,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     self.logger.info("Request completed successfully", extra=log_data)
             
         except Exception as e:
-            self.logger.error(f"Error logging request end: {e}")
+            self.logger.error(f"Error logging request end: {e}", exc_info=True)
     
     def _get_client_ip(self, request: Request) -> str:
         """Extract client IP from request headers."""
@@ -243,7 +243,7 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                 }
             )
         except Exception as e:
-            self.logger.error(f"Error logging slow request: {e}")
+            self.logger.error(f"Error logging slow request: {e}", exc_info=True)
 
 
 class ErrorTrackingMiddleware(BaseHTTPMiddleware):
@@ -286,3 +286,5 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
         except Exception as log_error:
             # Fallback logging to avoid infinite recursion
             print(f"Error logging error: {log_error}")
+            import traceback
+            traceback.print_exc()

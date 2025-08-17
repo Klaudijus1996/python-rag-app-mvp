@@ -53,7 +53,7 @@ def load_retriever(k: int = TOP_K, search_type: str = "mmr"):
         return retriever
         
     except Exception as e:
-        logger.error(f"Failed to load retriever: {e}")
+        logger.error(f"Failed to load retriever: {e}", exc_info=True)
         raise
 
 
@@ -137,7 +137,7 @@ def extract_products_from_docs(docs: List[Document]) -> List[ProductInfo]:
             )
             products.append(product)
         except Exception as e:
-            logger.warning(f"Failed to extract product info: {e}")
+            logger.warning(f"Failed to extract product info: {e}", exc_info=True)
             continue
     
     return products
@@ -252,7 +252,7 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
         return rag_with_memory
         
     except Exception as e:
-        logger.error(f"Failed to build RAG chain: {e}")
+        logger.error(f"Failed to build RAG chain: {e}", exc_info=True)
         raise
 
 
@@ -274,7 +274,7 @@ def build_retrieval_chain():
         return retrieve_with_metadata
         
     except Exception as e:
-        logger.error(f"Failed to build retrieval chain: {e}")
+        logger.error(f"Failed to build retrieval chain: {e}", exc_info=True)
         raise
 
 
@@ -294,7 +294,7 @@ class RAGSystem:
             self.retrieval_chain = build_retrieval_chain()
             logger.info("RAG system initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize RAG system: {e}")
+            logger.error(f"Failed to initialize RAG system: {e}", exc_info=True)
             raise
     
     def query(self, question: str, session_id: str) -> str:
@@ -310,7 +310,7 @@ class RAGSystem:
             )
             return response
         except Exception as e:
-            logger.error(f"Query processing failed: {e}")
+            logger.error(f"Query processing failed: {e}", exc_info=True)
             raise
     
     def retrieve(self, query: str) -> Dict[str, Any]:
@@ -321,7 +321,7 @@ class RAGSystem:
         try:
             return self.retrieval_chain(query)
         except Exception as e:
-            logger.error(f"Document retrieval failed: {e}")
+            logger.error(f"Document retrieval failed: {e}", exc_info=True)
             raise
     
     def get_session_info(self, session_id: str) -> Dict[str, Any]:
