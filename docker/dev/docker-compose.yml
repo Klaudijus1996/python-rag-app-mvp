@@ -1,8 +1,8 @@
 services:
   rag-app:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.dev
+      context: ../..
+      dockerfile: docker/dev/Dockerfile
     container_name: python-rag-app-mvp-dev
     ports:
       - "8000:8000"
@@ -12,12 +12,12 @@ services:
       - APP_PORT=8000
       - PYTHONPATH=/app
     env_file:
-      - ../.env
+      - ../../.env
     volumes:
-      - ..:/app
-      - ../data:/app/data:ro
-      - ../store:/app/store
-      - ../storage/logs:/app/storage/logs
+      - ../..:/app
+      - ../../data:/app/data:ro
+      - ../../store:/app/store
+      - ../../storage/logs:/app/storage/logs
     restart: unless-stopped
     command: ["python", "app.py"]
     networks:

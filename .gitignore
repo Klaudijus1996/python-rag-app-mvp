@@ -211,3 +211,5 @@ store/*
 !store/.gitignore
 storage/logs/*
 !storage/logs/.gitignore
+
+.idea

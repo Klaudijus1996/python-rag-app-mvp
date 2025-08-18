@@ -4,8 +4,8 @@
 # Docker configuration
 DOCKER_COMPOSE = docker compose
 DOCKER_DIR = docker
-DEV_COMPOSE_FILE = $(DOCKER_DIR)/docker-compose.dev.yml
-PROD_COMPOSE_FILE = $(DOCKER_DIR)/docker-compose.prod.yml
+DEV_COMPOSE_FILE = $(DOCKER_DIR)/dev/docker-compose.yml
+PROD_COMPOSE_FILE = $(DOCKER_DIR)/prod/docker-compose.yml
 
 .PHONY: help setup quickstart build build-prod dev prod test test-coverage lint format ingest clean stop logs shell health
 

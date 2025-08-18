@@ -1,8 +1,8 @@
 services:
   rag-app:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.prod
+      context: ../..
+      dockerfile: docker/prod/Dockerfile
     container_name: python-rag-app-mvp-prod
     ports:
       - "8000:8000"
@@ -11,11 +11,11 @@ services:
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
     env_file:
-      - ../.env
+      - ../../.env
     volumes:
-      - ../data:/app/data:ro
-      - ../store:/app/store
-      - ../storage/logs:/app/storage/logs
+      - ../../data:/app/data:ro
+      - ../../store:/app/store
+      - ../../storage/logs:/app/storage/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
