@@ -10,7 +10,9 @@ A production-ready Retrieval-Augmented Generation (RAG) application built with F
 - **Session Memory**: Maintains conversation context for follow-up questions
 - **FastAPI Backend**: Modern, async API with automatic documentation
 - **Vector Search**: FAISS-powered similarity search for relevant product retrieval
-- **Docker Ready**: Containerized deployment with Docker Compose
+- **Docker Ready**: Separate dev/prod containerized deployment with Docker Compose
+- **Structured Logging**: Async logging with daily rotation and JSON support
+- **Request Monitoring**: Performance tracking and error monitoring middleware
 - **Comprehensive Testing**: Unit and integration tests included
 - **LangSmith Integration**: Optional observability and tracing
 
@@ -75,16 +77,18 @@ uvicorn app:app --reload --port 8000
 ### 3. Docker Setup
 
 ```bash
-# Copy environment file
+# Copy environment file and build
+make quickstart
+
+# Or manual setup:
 cp .env.example .env
 # Edit .env with your API keys
 
-# Build and run
-make docker-build
-make docker-run
+# Development environment
+make dev
 
-# Or use docker-compose directly
-docker-compose up -d
+# Production environment  
+make prod
 ```
 
 ## 📖 API Usage
@@ -167,23 +171,23 @@ pytest tests/test_app.py -v
 ## 🐳 Docker Operations
 
 ```bash
-# Build image
-make docker-build
+# Development
+make build         # Build development image
+make dev           # Start development environment
+make dev-with-redis # Start with Redis support
 
-# Run with Docker Compose
-make docker-run
+# Production
+make build-prod    # Build production image
+make prod          # Start production environment
+make prod-with-redis # Start production with Redis
+make test-prod     # Test production build
 
-# Run with Redis (production)
-make docker-run-with-redis
-
-# View logs
-make docker-logs
-
-# Stop containers
-make docker-stop
-
-# Open shell in container
-make docker-shell
+# Utilities
+make logs          # View development logs
+make logs-prod     # View production logs
+make shell         # Open shell in dev container
+make stop          # Stop all containers
+make clean         # Clean up containers and images
 ```
 
 ## 📊 Data Management
@@ -258,29 +262,38 @@ Once the server is running, visit:
 
 ```bash
 make help           # Show all available commands
-make dev            # Start development server
-make test           # Run tests
+make quickstart     # Complete development setup
+make dev            # Start development environment
+make test           # Run tests in container
+make test-coverage  # Run tests with coverage
 make lint           # Run code linting
+make lint-fix       # Run linting with auto-fix
 make format         # Format code
-make clean          # Clean generated files
+make format-check   # Check code formatting
+make ingest         # Run data ingestion
+make ingest-force   # Force re-ingestion
 make health         # Check application health
+make clean          # Clean containers and images
 ```
 
 ### Code Structure
 
 ```
 python-rag-app-mvp/
-├── app.py                 # FastAPI application
+├── app.py                 # FastAPI application with lifespan management
 ├── chains.py              # RAG pipeline and prompts
 ├── schema.py              # Pydantic models
 ├── ingest.py              # Data ingestion script
+├── logging_config.py      # Structured logging with async support
+├── middleware.py          # Request logging and monitoring middleware
 ├── data/products.csv      # Sample product catalog
-├── store/                 # FAISS vector index
+├── store/faiss/           # FAISS vector index
+├── storage/logs/          # Application logs with daily rotation
 ├── tests/                 # Test suite
-├── storage/logs/          # Application logs
-├── Dockerfile             # Container definition
-├── docker-compose.yml     # Multi-container setup
-├── Makefile              # Development automation
+├── docker/
+│   ├── dev/               # Development Docker configuration
+│   └── prod/              # Production Docker configuration
+├── Makefile              # Docker-based development automation
 └── README.md             # This file
 ```
 
@@ -364,26 +377,6 @@ python app.py
 # View detailed logs
 make logs
 ```
-
-## 📝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `make test`
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🤝 Support
-
-For issues and questions:
-
-1. Check the troubleshooting section
-2. Review existing GitHub issues
-3. Create a new issue with detailed information
 
 ## 🎉 Example Queries
 
