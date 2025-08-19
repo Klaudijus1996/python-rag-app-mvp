@@ -97,9 +97,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 def get_rag_system() -> RAGSystem:
     """Dependency to get RAG system instance."""
+    global rag_system
+    
+    # If RAG system doesn't exist, try to initialize it if index is available
+    if rag_system is None and check_index_exists():
+        try:
+            rag_system = RAGSystem()
+            logger.info("RAG system initialized on-demand after external ingestion")
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG system on-demand: {e}", exc_info=True)
+    
     if rag_system is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -262,15 +271,6 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
         vector_store = ingest.create_and_save_vector_store(chunks)
         
         processing_time = time.time() - start_time
-        
-        # Re-initialize RAG system if it exists
-        global rag_system
-        if rag_system:
-            try:
-                rag_system = RAGSystem()
-                logger.info("RAG system re-initialized after ingestion")
-            except Exception as e:
-                logger.error(f"Failed to re-initialize RAG system: {e}", exc_info=True)
         
         logger.info(f"Ingestion completed in {processing_time:.2f}s")
         
