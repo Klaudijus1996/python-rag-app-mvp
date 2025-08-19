@@ -20,7 +20,7 @@ def setup_test_environment():
     """Set up clean test environment variables when explicitly requested."""
     # Store original values
     original_env = {}
-    
+
     # Environment variables to set/override for tests
     test_env_vars = {
         "OPENAI_API_KEY": "test-openai-key",
@@ -36,16 +36,16 @@ def setup_test_environment():
         "PINECONE_REGION": "us-east-1",
         "PINECONE_CLOUD": "aws",
         "PINECONE_DIMENSION": "1536",
-        "PINECONE_METRIC": "cosine"
+        "PINECONE_METRIC": "cosine",
     }
-    
+
     # Store original values and set test values
     for key, value in test_env_vars.items():
         original_env[key] = os.environ.get(key)
         os.environ[key] = value
-    
+
     yield
-    
+
     # Restore original environment
     for key, original_value in original_env.items():
         if original_value is None:
@@ -65,9 +65,11 @@ def temp_dir() -> Generator[str, None, None]:
 @pytest.fixture
 def mock_openai_embeddings():
     """Mock OpenAI embeddings."""
-    with patch('langchain_openai.OpenAIEmbeddings') as mock_embeddings_class:
+    with patch("langchain_openai.OpenAIEmbeddings") as mock_embeddings_class:
         mock_embeddings = Mock(spec=OpenAIEmbeddings)
-        mock_embeddings.embed_documents.return_value = [[0.1, 0.2, 0.3] * 512]  # 1536-dim vector
+        mock_embeddings.embed_documents.return_value = [
+            [0.1, 0.2, 0.3] * 512
+        ]  # 1536-dim vector
         mock_embeddings.embed_query.return_value = [0.1, 0.2, 0.3] * 512
         mock_embeddings_class.return_value = mock_embeddings
         yield mock_embeddings
@@ -83,13 +85,13 @@ def mock_vector_store():
     mock_store.load_existing.return_value = None
     mock_store.save.return_value = None
     mock_store.delete.return_value = None
-    
+
     # Mock retriever
     mock_retriever = Mock()
     mock_retriever.get_relevant_documents.return_value = []
     mock_retriever.invoke.return_value = []
     mock_store.get_retriever.return_value = mock_retriever
-    
+
     return mock_store
 
 
@@ -108,8 +110,8 @@ def sample_documents() -> List[Document]:
                 "price": 2.99,
                 "type": "Organic",
                 "rating": 4.5,
-                "description": "Premium organic red apples"
-            }
+                "description": "Premium organic red apples",
+            },
         ),
         Document(
             page_content="Premium storage containers with airtight seals for kitchen organization",
@@ -122,8 +124,8 @@ def sample_documents() -> List[Document]:
                 "price": 149.0,
                 "type": "Storage Baskets",
                 "rating": 4.2,
-                "description": "Professional storage container set"
-            }
+                "description": "Professional storage container set",
+            },
         ),
         Document(
             page_content="Effective multipurpose cleaning wipes for all surfaces",
@@ -136,30 +138,44 @@ def sample_documents() -> List[Document]:
                 "price": 169.0,
                 "type": "Disinfectant Spray & Cleaners",
                 "rating": 3.8,
-                "description": "Eco-friendly cleaning wipes"
-            }
-        )
+                "description": "Eco-friendly cleaning wipes",
+            },
+        ),
     ]
 
 
 @pytest.fixture
 def sample_dataframe() -> pd.DataFrame:
     """Create sample DataFrame for testing ingestion."""
-    return pd.DataFrame({
-        'index': [1, 2, 3],
-        'product': ['Organic Red Apples', 'Storage Container Set', 'Multipurpose Cleaning Wipes'],
-        'brand': ['Fresh Farm', 'Nakoda', 'Nature Protect'],
-        'category': ['Fruits & Vegetables', 'Cleaning & Household', 'Cleaning & Household'],
-        'sub_category': ['Fresh Fruits', 'Storage & Accessories', 'All Purpose Cleaners'],
-        'sale_price': [2.99, 149.0, 169.0],
-        'type': ['Organic', 'Storage Baskets', 'Disinfectant Spray & Cleaners'],
-        'rating': [4.5, 4.2, 3.8],
-        'description': [
-            'Premium organic red apples',
-            'Professional storage container set',
-            'Eco-friendly cleaning wipes'
-        ]
-    })
+    return pd.DataFrame(
+        {
+            "index": [1, 2, 3],
+            "product": [
+                "Organic Red Apples",
+                "Storage Container Set",
+                "Multipurpose Cleaning Wipes",
+            ],
+            "brand": ["Fresh Farm", "Nakoda", "Nature Protect"],
+            "category": [
+                "Fruits & Vegetables",
+                "Cleaning & Household",
+                "Cleaning & Household",
+            ],
+            "sub_category": [
+                "Fresh Fruits",
+                "Storage & Accessories",
+                "All Purpose Cleaners",
+            ],
+            "sale_price": [2.99, 149.0, 169.0],
+            "type": ["Organic", "Storage Baskets", "Disinfectant Spray & Cleaners"],
+            "rating": [4.5, 4.2, 3.8],
+            "description": [
+                "Premium organic red apples",
+                "Professional storage container set",
+                "Eco-friendly cleaning wipes",
+            ],
+        }
+    )
 
 
 @pytest.fixture
@@ -168,7 +184,7 @@ def faiss_config():
     return VectorStoreConfig(
         store_type="faiss",
         embedding_model="text-embedding-3-small",
-        faiss_config=FAISSConfig(index_dir="test_store/faiss")
+        faiss_config=FAISSConfig(index_dir="test_store/faiss"),
     )
 
 
@@ -184,54 +200,68 @@ def pinecone_config():
             cloud="aws",
             index_name="test-index",
             dimension=1536,
-            metric="cosine"
-        )
+            metric="cosine",
+        ),
     )
 
 
 @pytest.fixture
 def mock_faiss():
     """Mock FAISS vector store components."""
-    with patch('vector_stores.faiss_store.FAISS') as mock_faiss_class:
+    with patch("vector_stores.faiss_store.FAISS") as mock_faiss_class:
         mock_faiss_instance = Mock()
         mock_faiss_instance.save_local = Mock()
         mock_faiss_instance.as_retriever = Mock()
-        
+
         mock_faiss_class.from_documents.return_value = mock_faiss_instance
         mock_faiss_class.load_local.return_value = mock_faiss_instance
-        
+
         yield mock_faiss_class, mock_faiss_instance
 
 
 @pytest.fixture
 def mock_pinecone():
     """Mock Pinecone vector store components."""
-    with patch('vector_stores.pinecone_store.PINECONE_AVAILABLE', True), \
-         patch('vector_stores.pinecone_store.Pinecone') as mock_pinecone_class, \
-         patch('vector_stores.pinecone_store.PineconeVectorStore') as mock_pinecone_vector_store:
-        
+    with (
+        patch("vector_stores.pinecone_store.PINECONE_AVAILABLE", True),
+        patch("vector_stores.pinecone_store.Pinecone") as mock_pinecone_class,
+        patch(
+            "vector_stores.pinecone_store.PineconeVectorStore"
+        ) as mock_pinecone_vector_store,
+    ):
         # Mock Pinecone client
         mock_pinecone_instance = Mock()
         mock_pinecone_instance.list_indexes.return_value.indexes = []
         mock_pinecone_instance.create_index = Mock()
         mock_pinecone_instance.delete_index = Mock()
         mock_pinecone_class.return_value = mock_pinecone_instance
-        
+
         # Mock PineconeVectorStore
         mock_vector_store_instance = Mock()
         mock_vector_store_instance.as_retriever = Mock()
-        mock_pinecone_vector_store.from_documents.return_value = mock_vector_store_instance
-        mock_pinecone_vector_store.from_existing_index.return_value = mock_vector_store_instance
-        
-        yield mock_pinecone_class, mock_pinecone_instance, mock_pinecone_vector_store, mock_vector_store_instance
+        mock_pinecone_vector_store.from_documents.return_value = (
+            mock_vector_store_instance
+        )
+        mock_pinecone_vector_store.from_existing_index.return_value = (
+            mock_vector_store_instance
+        )
+
+        yield (
+            mock_pinecone_class,
+            mock_pinecone_instance,
+            mock_pinecone_vector_store,
+            mock_vector_store_instance,
+        )
 
 
 @pytest.fixture
 def mock_chat_openai():
     """Mock ChatOpenAI for testing."""
-    with patch('chains.ChatOpenAI') as mock_chat_class:
+    with patch("chains.ChatOpenAI") as mock_chat_class:
         mock_chat_instance = Mock()
-        mock_chat_instance.invoke.return_value = "This is a test response from ChatOpenAI"
+        mock_chat_instance.invoke.return_value = (
+            "This is a test response from ChatOpenAI"
+        )
         mock_chat_class.return_value = mock_chat_instance
         yield mock_chat_instance
 
@@ -241,13 +271,18 @@ def clean_environment():
     """Ensure clean environment state for each test."""
     # Clear any cached modules
     import sys
-    modules_to_clear = [name for name in sys.modules.keys() if name.startswith(('vector_stores', 'chains', 'ingest'))]
+
+    modules_to_clear = [
+        name
+        for name in sys.modules.keys()
+        if name.startswith(("vector_stores", "chains", "ingest"))
+    ]
     for module_name in modules_to_clear:
         if module_name in sys.modules:
             del sys.modules[module_name]
-    
+
     yield
-    
+
     # Clean up after test
     for module_name in modules_to_clear:
         if module_name in sys.modules:
@@ -268,9 +303,7 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "integration: mark test as integration test (may be slow)"
     )
-    config.addinivalue_line(
-        "markers", "unit: mark test as unit test (fast)"
-    )
+    config.addinivalue_line("markers", "unit: mark test as unit test (fast)")
 
 
 def pytest_collection_modifyitems(config, items):
