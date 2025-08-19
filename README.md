@@ -401,6 +401,7 @@ python-rag-app-mvp/
 │   └── pinecone_store.py  # Cloud Pinecone vector store implementation
 ├── data/
 │   ├── big-basket-products-28k.csv  # BigBasket grocery dataset (~28k products)
+│   ├── big-basket-products-20.csv  # Tiny BigBasket grocery dataset (20 products)
 │   └── products.csv       # Legacy sample data (for backward compatibility)
 ├── store/
 │   └── faiss/             # Local FAISS vector index storage
@@ -520,7 +521,7 @@ For a complete production deployment, consider:
    - Check OpenAI API key in `.env`
 
 2. **"No relevant products found"**
-   - Verify product data in `data/big-basket-products-28k.csv`
+   - Verify product data in `data/big-basket-products-{*}.csv`
    - Check embedding model configuration
 
 3. **Docker build fails**

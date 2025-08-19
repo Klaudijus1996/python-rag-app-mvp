@@ -13,7 +13,7 @@ from vector_stores import VectorStoreFactory, VectorStoreInterface
 load_dotenv()
 
 # Configuration
-DATA_PATH = "data/big-basket-products-28k.csv"
+DATA_PATH = os.getenv("APP_TEST_DATA_PATH", "data/big-basket-products-20.csv")
 EMBED_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
