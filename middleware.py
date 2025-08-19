@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from logging_config import get_logger, RequestLoggingContext
+from logging_config import get_logger
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -233,7 +233,7 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
         """Log slow request details."""
         try:
             self.logger.warning(
-                f"Slow request detected",
+                "Slow request detected",
                 extra={
                     "event": "slow_request",
                     "method": request.method,
@@ -273,7 +273,7 @@ class ErrorTrackingMiddleware(BaseHTTPMiddleware):
         """Log error details."""
         try:
             self.logger.error(
-                f"Unhandled error in request",
+                "Unhandled error in request",
                 extra={
                     "event": "unhandled_error",
                     "method": request.method,

@@ -1,11 +1,11 @@
 import pytest
 import os
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from app import app, get_rag_system, check_index_exists
 from chains import RAGSystem
-from schema import ChatRequest, QueryType, ProductInfo
+from schema import QueryType, ProductInfo
 
 
 @pytest.fixture
@@ -165,18 +165,18 @@ class TestIngestEndpoint:
     
     @patch('app.ingest.load_and_process_data')
     @patch('app.ingest.chunk_documents')
-    @patch('app.ingest.create_vector_store')
-    @patch('app.ingest.save_vector_store')
-    def test_ingest_success(self, mock_save, mock_create, mock_chunk, mock_load, client):
+    @patch('app.ingest.create_and_save_vector_store')
+    def test_ingest_success(self, mock_create_and_save, mock_chunk, mock_load, client):
         """Test successful ingestion."""
         # Mock the ingestion process
         mock_docs = [Mock()]
         mock_chunks = [Mock(), Mock(), Mock()]
         mock_vector_store = Mock()
+        mock_vector_store.store_type = "faiss"
         
         mock_load.return_value = mock_docs
         mock_chunk.return_value = mock_chunks
-        mock_create.return_value = mock_vector_store
+        mock_create_and_save.return_value = mock_vector_store
         
         with patch('app.check_index_exists', return_value=False):
             payload = {
@@ -205,11 +205,13 @@ class TestIngestEndpoint:
     
     def test_ingest_force_reindex(self, client):
         """Test forced reindexing."""
+        mock_vector_store = Mock()
+        mock_vector_store.store_type = "faiss"
+        
         with patch('app.check_index_exists', return_value=True), \
              patch('app.ingest.load_and_process_data', return_value=[]), \
              patch('app.ingest.chunk_documents', return_value=[]), \
-             patch('app.ingest.create_vector_store', return_value=Mock()), \
-             patch('app.ingest.save_vector_store'):
+             patch('app.ingest.create_and_save_vector_store', return_value=mock_vector_store):
             
             payload = {"force_reindex": True}
             response = client.post("/ingest", json=payload)
@@ -327,21 +329,39 @@ class TestErrorHandling:
 class TestUtilityFunctions:
     """Test utility functions."""
     
-    def test_check_index_exists_true(self):
-        """Test index existence check when index exists."""
-        with patch('pathlib.Path.exists', return_value=True), \
+    def test_check_index_exists_true_with_vector_store(self):
+        """Test index existence check using vector store abstraction."""
+        with patch('vector_stores.VectorStoreFactory.create_from_env') as mock_factory:
+            mock_vector_store = Mock()
+            mock_vector_store.exists.return_value = True
+            mock_factory.return_value = mock_vector_store
+            
+            assert check_index_exists() is True
+            mock_vector_store.exists.assert_called_once()
+    
+    def test_check_index_exists_false_with_vector_store(self):
+        """Test index existence check when vector store doesn't exist."""
+        with patch('vector_stores.VectorStoreFactory.create_from_env') as mock_factory:
+            mock_vector_store = Mock()
+            mock_vector_store.exists.return_value = False
+            mock_factory.return_value = mock_vector_store
+            
+            assert check_index_exists() is False
+            mock_vector_store.exists.assert_called_once()
+    
+    def test_check_index_exists_fallback_to_path_check(self):
+        """Test fallback to path checking when vector store creation fails."""
+        with patch('vector_stores.VectorStoreFactory.create_from_env', side_effect=Exception("Factory error")), \
+             patch('pathlib.Path.exists', return_value=True), \
              patch('pathlib.Path.iterdir', return_value=['file1', 'file2']):
+            
             assert check_index_exists() is True
     
-    def test_check_index_exists_false_no_dir(self):
-        """Test index existence check when directory doesn't exist."""
-        with patch('pathlib.Path.exists', return_value=False):
-            assert check_index_exists() is False
-    
-    def test_check_index_exists_false_empty_dir(self):
-        """Test index existence check when directory is empty."""
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.iterdir', return_value=[]):
+    def test_check_index_exists_fallback_false(self):
+        """Test fallback returns False when directory doesn't exist."""
+        with patch('vector_stores.VectorStoreFactory.create_from_env', side_effect=Exception("Factory error")), \
+             patch('pathlib.Path.exists', return_value=False):
+            
             assert check_index_exists() is False
 
 

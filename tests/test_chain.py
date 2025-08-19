@@ -1,9 +1,6 @@
 import pytest
 import os
-import tempfile
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
-import pandas as pd
+from unittest.mock import Mock, patch
 
 from chains import RAGSystem, detect_query_type, format_docs, extract_products_from_docs
 from schema import QueryType, ProductInfo
@@ -161,8 +158,8 @@ class TestProductExtraction:
 
 @pytest.fixture
 def mock_vector_store():
-    """Mock FAISS vector store for testing."""
-    with patch('chains.FAISS.load_local') as mock_load:
+    """Mock vector store for testing using the new abstraction."""
+    with patch('chains.VectorStoreFactory.create_from_env') as mock_factory:
         mock_store = Mock()
         mock_retriever = Mock()
         
@@ -185,8 +182,10 @@ def mock_vector_store():
         
         mock_retriever.get_relevant_documents.return_value = mock_docs
         mock_retriever.invoke.return_value = mock_docs
-        mock_store.as_retriever.return_value = mock_retriever
-        mock_load.return_value = mock_store
+        mock_store.get_retriever.return_value = mock_retriever
+        mock_store.load_existing.return_value = None
+        mock_store.store_type = "faiss"
+        mock_factory.return_value = mock_store
         
         yield mock_store
 
@@ -194,7 +193,7 @@ def mock_vector_store():
 @pytest.fixture
 def mock_openai():
     """Mock OpenAI components."""
-    with patch('chains.OpenAIEmbeddings') as mock_embeddings, \
+    with patch('langchain_openai.OpenAIEmbeddings') as mock_embeddings, \
          patch('chains.ChatOpenAI') as mock_chat:
         
         mock_embeddings.return_value = Mock()
@@ -208,79 +207,142 @@ def mock_openai():
 class TestRAGSystem:
     """Test the complete RAG system."""
     
-    def test_rag_system_initialization(self, mock_vector_store, mock_openai):
+    def test_rag_system_initialization(self, mock_vector_store, mock_openai, monkeypatch):
         """Test RAG system can be initialized."""
-        with patch('os.path.exists', return_value=True):
-            rag_system = RAGSystem()
-            assert rag_system is not None
-            assert rag_system.session_store == {}
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        rag_system = RAGSystem()
+        assert rag_system is not None
+        assert rag_system.session_store == {}
     
-    def test_rag_system_query(self, mock_vector_store, mock_openai):
+    def test_rag_system_query(self, mock_vector_store, mock_openai, monkeypatch):
         """Test basic query processing."""
-        with patch('os.path.exists', return_value=True):
-            rag_system = RAGSystem()
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        rag_system = RAGSystem()
+        
+        # Mock the chain response
+        with patch.object(rag_system, 'rag_chain') as mock_chain:
+            mock_chain.invoke.return_value = "Test response"
             
-            # Mock the chain response
-            with patch.object(rag_system, 'rag_chain') as mock_chain:
-                mock_chain.invoke.return_value = "Test response"
-                
-                response = rag_system.query("Test query", "test_session")
-                assert response == "Test response"
-                mock_chain.invoke.assert_called_once()
+            response = rag_system.query("Test query", "test_session")
+            assert response == "Test response"
+            mock_chain.invoke.assert_called_once()
     
-    def test_rag_system_retrieve(self, mock_vector_store, mock_openai):
+    def test_rag_system_retrieve(self, mock_vector_store, mock_openai, monkeypatch):
         """Test document retrieval."""
-        with patch('os.path.exists', return_value=True):
-            rag_system = RAGSystem()
-            
-            result = rag_system.retrieve("storage containers")
-            assert "documents" in result
-            assert "products" in result
-            assert "query_type" in result
-            assert "context" in result
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        rag_system = RAGSystem()
+        
+        result = rag_system.retrieve("storage containers")
+        assert "documents" in result
+        assert "products" in result
+        assert "query_type" in result
+        assert "context" in result
     
-    def test_session_management(self, mock_vector_store, mock_openai):
+    def test_session_management(self, mock_vector_store, mock_openai, monkeypatch):
         """Test session management functionality."""
-        with patch('os.path.exists', return_value=True):
-            rag_system = RAGSystem()
-            
-            # Test session info for non-existent session
-            info = rag_system.get_session_info("nonexistent")
-            assert info["exists"] is False
-            assert info["message_count"] == 0
-            
-            # Test clearing non-existent session
-            result = rag_system.clear_session("nonexistent")
-            assert result is False
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        rag_system = RAGSystem()
+        
+        # Test session info for non-existent session
+        info = rag_system.get_session_info("nonexistent")
+        assert info["exists"] is False
+        assert info["message_count"] == 0
+        
+        # Test clearing non-existent session
+        result = rag_system.clear_session("nonexistent")
+        assert result is False
 
 
 class TestIntegration:
     """Integration tests for the complete system."""
     
     @pytest.mark.asyncio
-    async def test_basic_workflow(self, mock_vector_store, mock_openai):
+    async def test_basic_workflow(self, mock_vector_store, mock_openai, monkeypatch):
         """Test a complete workflow from query to response."""
-        with patch('os.path.exists', return_value=True):
-            rag_system = RAGSystem()
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        rag_system = RAGSystem()
+        
+        # Test retrieval
+        retrieval_result = rag_system.retrieve("recommend storage containers")
+        assert retrieval_result["query_type"] == QueryType.RECOMMENDATION
+        assert len(retrieval_result["products"]) > 0
+        
+        # Test query processing
+        with patch.object(rag_system, 'rag_chain') as mock_chain:
+            mock_chain.invoke.return_value = "I recommend the Storage Container Set..."
             
-            # Test retrieval
-            retrieval_result = rag_system.retrieve("recommend storage containers")
-            assert retrieval_result["query_type"] == QueryType.RECOMMENDATION
-            assert len(retrieval_result["products"]) > 0
-            
-            # Test query processing
-            with patch.object(rag_system, 'rag_chain') as mock_chain:
-                mock_chain.invoke.return_value = "I recommend the Storage Container Set..."
-                
-                response = rag_system.query("recommend storage containers", "test_session")
-                assert "Storage Container" in response
+            response = rag_system.query("recommend storage containers", "test_session")
+            assert "Storage Container" in response
+
+
+class TestLoadRetriever:
+    """Test the load_retriever function with vector store abstraction."""
+    
+    def test_load_retriever_with_factory(self, mock_vector_store, monkeypatch):
+        """Test load_retriever uses the factory pattern correctly."""
+        from chains import load_retriever
+        
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        retriever = load_retriever(k=10, search_type="mmr")
+        
+        # Verify that the vector store was created and loaded
+        mock_vector_store.load_existing.assert_called_once()
+        mock_vector_store.get_retriever.assert_called_once_with(
+            search_type="mmr",
+            k=10,
+            lambda_mult=0.4
+        )
+        assert retriever is not None
+    
+    def test_load_retriever_with_similarity_search(self, mock_vector_store, monkeypatch):
+        """Test load_retriever with similarity search."""
+        from chains import load_retriever
+        
+        # Set up environment variables for vector store configuration
+        monkeypatch.setenv("VECTOR_STORE_TYPE", "faiss")
+        monkeypatch.setenv("FAISS_INDEX_DIR", "test_index")
+        monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        
+        retriever = load_retriever(k=5, search_type="similarity")
+        
+        # Verify the correct search type was used
+        mock_vector_store.get_retriever.assert_called_once_with(
+            search_type="similarity",
+            k=5,
+            lambda_mult=None
+        )
+        assert retriever is not None
 
 
 def test_environment_variable_handling():
     """Test that environment variables are properly handled."""
     # Test with default values
     with patch.dict(os.environ, {}, clear=True):
-        from chains import TOP_K, MODEL_CHAT, MODEL_EMBED
+        from chains import TOP_K
         # Should use defaults when env vars not set
         assert TOP_K == 5  # Default value
     

@@ -1,18 +1,17 @@
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Dict, Any, Optional
+from typing import Optional
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from dotenv import load_dotenv
 
 from schema import (
     ChatRequest, ChatResponse, IngestRequest, IngestResponse, 
-    HealthResponse, ErrorResponse, QueryType
+    HealthResponse, QueryType
 )
 from chains import RAGSystem
 import ingest
@@ -109,10 +108,36 @@ def get_rag_system() -> RAGSystem:
     return rag_system
 
 
+def get_index_path_for_response(vector_store=None) -> str:
+    """Get the appropriate index path for API responses based on vector store type.
+    
+    Args:
+        vector_store: Optional vector store instance to get the actual type from.
+                     If None, reads from environment variables.
+    """
+    if vector_store:
+        store_type = vector_store.store_type
+    else:
+        store_type = os.getenv("VECTOR_STORE_TYPE", "faiss").lower()
+    
+    if store_type == "faiss":
+        return os.getenv("FAISS_INDEX_DIR", "store/faiss")
+    elif store_type == "pinecone":
+        return f"pinecone://{os.getenv('PINECONE_INDEX_NAME', 'grocery-rag-index')}"
+    else:
+        return "unknown"
+
+
 def check_index_exists() -> bool:
-    """Check if vector index exists."""
-    index_path = Path(INDEX_DIR)
-    return index_path.exists() and any(index_path.iterdir())
+    """Check if vector index exists using vector store abstraction."""
+    try:
+        from vector_stores import VectorStoreFactory
+        vector_store = VectorStoreFactory.create_from_env()
+        return vector_store.exists()
+    except Exception:
+        # Fallback to checking the hardcoded FAISS path for backward compatibility
+        index_path = Path(INDEX_DIR)
+        return index_path.exists() and any(index_path.iterdir())
 
 
 @app.get("/", include_in_schema=False)
@@ -222,7 +247,7 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
             return IngestResponse(
                 status="already_exists",
                 chunks_indexed=0,
-                index_path=INDEX_DIR,
+                index_path=get_index_path_for_response(),
                 embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
                 processing_time_seconds=0
             )
@@ -234,8 +259,7 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
         # Run ingestion
         documents = ingest.load_and_process_data(ingest.DATA_PATH)
         chunks = ingest.chunk_documents(documents)
-        vector_store = ingest.create_vector_store(chunks)
-        ingest.save_vector_store(vector_store, INDEX_DIR)
+        vector_store = ingest.create_and_save_vector_store(chunks)
         
         processing_time = time.time() - start_time
         
@@ -254,7 +278,7 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
             status="completed",
             chunks_indexed=len(chunks),
             products_processed=len(documents),
-            index_path=INDEX_DIR,
+            index_path=get_index_path_for_response(vector_store),
             embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
             processing_time_seconds=processing_time
         )

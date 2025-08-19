@@ -2,16 +2,15 @@ import os
 import logging
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_openai import ChatOpenAI
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.documents import Document
 from schema import QueryType, ProductInfo
 from utils import DataConverter
+from vector_stores import VectorStoreFactory
 
 # Configuration
-INDEX_DIR = "store/faiss"
 MODEL_CHAT = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 MODEL_EMBED = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 TOP_K = int(os.getenv("RAG_TOP_K_RESULTS", "5"))
@@ -21,34 +20,24 @@ SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.7"))
 logger = logging.getLogger(__name__)
 
 
-def load_retriever(k: int = TOP_K, search_type: str = "mmr"):
-    """Load and configure the document retriever."""
+def load_retriever(k: int = TOP_K, search_type: str = "mmr") -> Any:
+    """Load and configure the document retriever using vector store abstraction."""
     
     try:
-        embeddings = OpenAIEmbeddings(model=MODEL_EMBED)
-        vector_store = FAISS.load_local(
-            INDEX_DIR, 
-            embeddings, 
-            allow_dangerous_deserialization=True
+        # Create vector store using factory pattern
+        vector_store = VectorStoreFactory.create_from_env()
+        
+        # Load existing vector store
+        vector_store.load_existing()
+        
+        # Get retriever with specified configuration
+        retriever = vector_store.get_retriever(
+            search_type=search_type,
+            k=k,
+            lambda_mult=0.4 if search_type == "mmr" else None
         )
         
-        # Configure retrieval strategy
-        if search_type == "mmr":
-            retriever = vector_store.as_retriever(
-                search_type="mmr",
-                search_kwargs={
-                    "k": k,
-                    "fetch_k": min(20, 4 * k),
-                    "lambda_mult": 0.4  # Diversity vs relevance tradeoff
-                }
-            )
-        else:
-            retriever = vector_store.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": k}
-            )
-        
-        logger.info(f"Retriever loaded successfully with {search_type} search")
+        logger.info(f"Retriever loaded successfully with {search_type} search using {vector_store.store_type}")
         return retriever
         
     except Exception as e:

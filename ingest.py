@@ -4,17 +4,16 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Any
 from dotenv import load_dotenv
-from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from utils import DataConverter
+from vector_stores import VectorStoreFactory, VectorStoreInterface
 
 load_dotenv()
 
 # Configuration
 DATA_PATH = "data/big-basket-products-28k.csv"
-INDEX_DIR = "store/faiss"
 EMBED_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
@@ -117,34 +116,30 @@ def chunk_documents(documents: List[Document]) -> List[Document]:
     return chunks
 
 
-def create_vector_store(chunks: List[Document]) -> FAISS:
-    """Create FAISS vector store from document chunks."""
+def create_and_save_vector_store(chunks: List[Document]) -> VectorStoreInterface:
+    """Create and save vector store from document chunks using abstracted interface."""
     
-    logger.info("Creating embeddings and vector store")
+    logger.info("Creating embeddings and vector store using abstracted interface")
     
     try:
+        # Create vector store using factory pattern
+        vector_store = VectorStoreFactory.create_from_env()
+        logger.info(f"Using vector store type: {vector_store.store_type}")
+        
+        # Create embeddings
         embeddings = OpenAIEmbeddings(model=EMBED_MODEL)
-        vector_store = FAISS.from_documents(chunks, embeddings)
-        logger.info("Vector store created successfully")
+        
+        # Create vector store from documents
+        vector_store.create_from_documents(chunks, embeddings)
+        
+        # Save the vector store (for FAISS, saves to disk; for Pinecone, auto-persisted)
+        vector_store.save()
+        
+        logger.info("Vector store created and saved successfully")
         return vector_store
         
     except Exception as e:
         logger.error(f"Failed to create vector store: {e}")
-        raise
-
-
-def save_vector_store(vector_store: FAISS, index_dir: str) -> None:
-    """Save vector store to disk."""
-    
-    logger.info(f"Saving vector store to {index_dir}")
-    
-    try:
-        Path(index_dir).mkdir(parents=True, exist_ok=True)
-        vector_store.save_local(index_dir)
-        logger.info("Vector store saved successfully")
-        
-    except Exception as e:
-        logger.error(f"Failed to save vector store: {e}")
         raise
 
 
@@ -164,15 +159,12 @@ def main():
         # Chunk documents
         chunks = chunk_documents(documents)
         
-        # Create vector store
-        vector_store = create_vector_store(chunks)
+        # Create and save vector store using abstracted interface
+        vector_store = create_and_save_vector_store(chunks)
         
-        # Save to disk
-        save_vector_store(vector_store, INDEX_DIR)
-        
-        logger.info(f"Ingestion completed successfully!")
+        logger.info("Ingestion completed successfully!")
         logger.info(f"Processed {len(documents)} products into {len(chunks)} chunks")
-        logger.info(f"Vector store saved to: {INDEX_DIR}")
+        logger.info(f"Using {vector_store.store_type} vector store")
         
     except Exception as e:
         logger.error(f"Ingestion failed: {e}")
