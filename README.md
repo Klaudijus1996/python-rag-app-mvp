@@ -1,15 +1,16 @@
 # Python RAG App MVP
 
-A production-ready Retrieval-Augmented Generation (RAG) application built with FastAPI, LangChain, and FAISS for intelligent grocery and household product recommendations and queries.
+A production-ready Retrieval-Augmented Generation (RAG) application built with FastAPI, LangChain, and flexible vector store backends (FAISS/Pinecone) for intelligent grocery and household product recommendations and queries using BigBasket's 28k product dataset.
 
 ## 🚀 Features
 
 - **Intelligent Product Recommendations**: AI-powered grocery and household product suggestions based on user queries
-- **Price Influencer Analysis**: Explains pricing factors like brand reputation, nutritional value, pack size, and organic/premium quality
 - **Multi-Query Support**: Handles recommendations, comparisons, complements, and information queries
 - **Session Memory**: Maintains conversation context for follow-up questions
 - **FastAPI Backend**: Modern, async API with automatic documentation
-- **Vector Search**: FAISS-powered similarity search for relevant product retrieval
+- **Flexible Vector Storage**: Support for both FAISS (local) and Pinecone (cloud) vector stores with seamless switching
+- **Smart Query Detection**: Automatically detects query types (recommendations, comparisons, complements, information)
+- **Vector Search**: Intelligent similarity search for relevant product retrieval
 - **Docker Ready**: Separate dev/prod containerized deployment with Docker Compose
 - **Structured Logging**: Async logging with daily rotation and JSON support
 - **Request Monitoring**: Performance tracking and error monitoring middleware
@@ -25,20 +26,32 @@ A production-ready Retrieval-Augmented Generation (RAG) application built with F
                                 │                       │
                                 │                       ▼
                        ┌─────────────────┐    ┌─────────────────┐
-                       │  Session Store  │    │ FAISS Retriever │
-                       └─────────────────┘    └─────────────────┘
+                       │  Session Store  │    │ Vector Store    │
+                       └─────────────────┘    │   Factory       │
+                                             └─────────────────┘
                                                        │
                                                        ▼
                                               ┌─────────────────┐
-                                              │ OpenAI Embeddings│
+                                              │ FAISS / Pinecone│
+                                              │   + OpenAI      │
+                                              │   Embeddings    │
                                               └─────────────────┘
 ```
 
-## 📋 Prerequisites
+## 📋 Prerequisites & Infrastructure
 
-- Python 3.11+
-- OpenAI API key
-- (Optional) LangSmith API key for observability
+### Required
+- **Python 3.11+** - Modern Python with async support
+- **OpenAI API key** - For embeddings and chat completions
+- **Docker & Docker Compose** - For containerized deployment and development (recommended)
+
+### Vector Store Options
+- **FAISS** (default) - Local vector storage, no additional setup required
+- **Pinecone** - Cloud vector database requiring API key and index setup
+
+### Optional
+- **LangSmith API key** - For observability and tracing
+- **Redis** - For distributed session storage (production recommended)
 
 ## 🚀 Quick Start
 
@@ -91,15 +104,40 @@ make dev
 make prod
 ```
 
-## 📖 API Usage
+## 📖 API Endpoints
 
-### Health Check
+### Core Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Root endpoint with basic information |
+| `GET` | `/health` | Health check with system status |
+| `POST` | `/chat` | Main RAG query endpoint |
+| `POST` | `/ingest` | Data ingestion and vector store creation |
+| `GET` | `/retrieve/{query}` | Document retrieval without response generation |
+| `GET` | `/sessions/{session_id}` | Get session information |
+| `DELETE` | `/sessions/{session_id}` | Clear user session |
+
+### API Usage Examples
+
+#### Health Check
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-### Chat with the RAG System
+**Response:**
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "index_ready": true,
+  "embedding_model": "text-embedding-3-small",
+  "total_chunks": null
+}
+```
+
+#### Chat with the RAG System
 
 ```bash
 curl -X POST "http://localhost:8000/chat" \
@@ -111,7 +149,7 @@ curl -X POST "http://localhost:8000/chat" \
   }'
 ```
 
-### Advanced Query with Filters
+#### Advanced Query with Filters
 
 ```bash
 curl -X POST "http://localhost:8000/chat" \
@@ -125,7 +163,23 @@ curl -X POST "http://localhost:8000/chat" \
   }'
 ```
 
-### Trigger Re-ingestion
+#### Retrieve Documents Only
+
+```bash
+curl -X GET "http://localhost:8000/retrieve/cleaning%20supplies"
+```
+
+#### Session Management
+
+```bash
+# Get session info
+curl -X GET "http://localhost:8000/sessions/user-123"
+
+# Clear session
+curl -X DELETE "http://localhost:8000/sessions/user-123"
+```
+
+#### Trigger Re-ingestion
 
 ```bash
 curl -X POST "http://localhost:8000/ingest" \
@@ -141,19 +195,40 @@ curl -X POST "http://localhost:8000/ingest" \
 
 ### Environment Variables
 
+#### Core Configuration
 | Variable                 | Default                  | Description                     |
 | ------------------------ | ------------------------ | ------------------------------- |
 | `OPENAI_API_KEY`         | -                        | OpenAI API key (required)       |
 | `OPENAI_CHAT_MODEL`      | `gpt-4o-mini`            | Chat model for responses        |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model                 |
-| `LANGSMITH_API_KEY`      | -                        | LangSmith API key (optional)    |
-| `LANGSMITH_TRACING`      | `true`                   | Enable LangSmith tracing        |
-| `LANGSMITH_PROJECT`      | `senukai-rag`            | LangSmith project name          |
+| `APP_ENV`                | `dev`                    | Environment (dev/production)    |
+| `APP_HOST`               | `0.0.0.0`                | Server host                     |
+| `APP_PORT`               | `8000`                   | Server port                     |
+
+#### Vector Store Configuration
+| Variable                 | Default                  | Description                     |
+| ------------------------ | ------------------------ | ------------------------------- |
+| `VECTOR_STORE_TYPE`      | `faiss`                  | Vector store type (faiss/pinecone) |
+| `FAISS_INDEX_DIR`        | `store/faiss`            | Local FAISS index directory    |
+| `PINECONE_API_KEY`       | -                        | Pinecone API key (if using Pinecone) |
+| `PINECONE_ENVIRONMENT`   | -                        | Pinecone environment            |
+| `PINECONE_INDEX_NAME`    | `grocery-rag-index`      | Pinecone index name             |
+
+#### RAG Configuration
+| Variable                 | Default                  | Description                     |
+| ------------------------ | ------------------------ | ------------------------------- |
 | `RAG_CHUNK_SIZE`         | `1000`                   | Text chunk size for ingestion   |
 | `RAG_CHUNK_OVERLAP`      | `200`                    | Overlap between chunks          |
 | `RAG_TOP_K_RESULTS`      | `5`                      | Number of documents to retrieve |
-| `APP_HOST`               | `0.0.0.0`                | Server host                     |
-| `APP_PORT`               | `8000`                   | Server port                     |
+| `RAG_SIMILARITY_THRESHOLD` | `0.7`                  | Minimum similarity threshold    |
+| `RAG_MAX_TOKENS_PER_RESPONSE` | `1000`             | Maximum tokens in responses     |
+
+#### Optional Services
+| Variable                 | Default                  | Description                     |
+| ------------------------ | ------------------------ | ------------------------------- |
+| `LANGSMITH_API_KEY`      | -                        | LangSmith API key (optional)    |
+| `LANGSMITH_TRACING`      | `true`                   | Enable LangSmith tracing        |
+| `LANGSMITH_PROJECT`      | `senukai-rag`            | LangSmith project name          |
 
 ## 🧪 Testing
 
@@ -208,9 +283,6 @@ make ingest
 
 # Force re-ingestion (clears existing index)
 make ingest-force
-
-# Reset index completely
-make reset-index
 ```
 
 ## 🎯 Query Types
@@ -260,42 +332,109 @@ Once the server is running, visit:
 
 ### Available Make Commands
 
+#### Quick Start & Setup
 ```bash
-make help           # Show all available commands
-make quickstart     # Complete development setup
-make dev            # Start development environment
-make test           # Run tests in container
-make test-coverage  # Run tests with coverage
-make lint           # Run code linting
-make lint-fix       # Run linting with auto-fix
-make format         # Format code
-make format-check   # Check code formatting
-make ingest         # Run data ingestion
-make ingest-force   # Force re-ingestion
-make health         # Check application health
-make clean          # Clean containers and images
+make help           # Show all available commands with descriptions
+make setup          # Copy .env.example to .env if needed  
+make quickstart     # Complete development setup (build + start)
+```
+
+#### Development & Building
+```bash
+make build          # Build development Docker image
+make dev            # Start development environment with validation
+make dev-with-redis # Start development with Redis support
+make shell          # Open interactive shell in development container
+make stop           # Stop all running containers
+```
+
+#### Production
+```bash
+make build-prod     # Build production Docker image
+make prod           # Start production environment
+make prod-with-redis # Start production with Redis support  
+make test-prod      # Test production build with health checks
+```
+
+#### Testing & Code Quality
+```bash
+make test           # Run all tests in development container
+make test-coverage  # Run tests with coverage reporting
+make lint           # Run code linting with ruff
+make lint-fix       # Run linting with automatic fixes
+make format         # Format code with ruff
+make format-check   # Check code formatting without changes
+```
+
+#### Data Management
+```bash
+make ingest         # Run data ingestion (preserves existing index)
+make ingest-force   # Force re-ingestion (clears existing index first)
+```
+
+#### Monitoring & Utilities  
+```bash
+make health         # Check application health endpoint
+make logs           # View development container logs (follow mode)
+make logs-prod      # View production container logs
+make clean          # Clean up containers and images
+make clean-all      # Deep clean including volumes and stored data
 ```
 
 ### Code Structure
 
 ```
 python-rag-app-mvp/
-├── app.py                 # FastAPI application with lifespan management
-├── chains.py              # RAG pipeline and prompts
-├── schema.py              # Pydantic models
-├── ingest.py              # Data ingestion script
-├── logging_config.py      # Structured logging with async support
-├── middleware.py          # Request logging and monitoring middleware
-├── data/big-basket-products-28k.csv      # Sample product catalog consting of almost 28k products
-├── store/faiss/           # FAISS vector index
-├── storage/logs/          # Application logs with daily rotation
-├── tests/                 # Test suite
+├── app.py                 # FastAPI application with lifespan management and endpoints
+├── chains.py              # RAG system with query detection and memory management
+├── schema.py              # Pydantic models for API validation and responses
+├── ingest.py              # Data ingestion with configurable chunking strategies
+├── utils.py               # Data conversion utilities and helper functions
+├── logging_config.py      # Structured async logging with daily rotation
+├── middleware.py          # Request logging, performance monitoring, error tracking
+├── vector_stores/         # Modular vector store implementations
+│   ├── __init__.py        # Vector store module exports
+│   ├── base.py            # Abstract base interface for vector stores
+│   ├── config.py          # Configuration management for vector stores
+│   ├── factory.py         # Factory pattern for vector store creation
+│   ├── faiss_store.py     # Local FAISS vector store implementation
+│   └── pinecone_store.py  # Cloud Pinecone vector store implementation
+├── data/
+│   ├── big-basket-products-28k.csv  # BigBasket grocery dataset (~28k products)
+│   ├── big-basket-products-20.csv  # Tiny BigBasket grocery dataset (20 products)
+│   └── products.csv       # Legacy sample data (for backward compatibility)
+├── store/
+│   └── faiss/             # Local FAISS vector index storage
+├── storage/
+│   └── logs/              # Application logs with daily rotation and JSON format
+├── tests/                 # Comprehensive test suite
+│   ├── conftest.py        # Test configuration and fixtures
+│   ├── test_app.py        # FastAPI endpoint tests
+│   ├── test_chain.py      # RAG system tests
+│   ├── test_ingest.py     # Data ingestion tests
+│   ├── test_utils.py      # Utility function tests
+│   └── test_vector_stores.py  # Vector store implementation tests
 ├── docker/
-│   ├── dev/               # Development Docker configuration
-│   └── prod/              # Production Docker configuration
+│   ├── dev/
+│   │   ├── Dockerfile     # Development container configuration
+│   │   └── docker-compose.yml  # Dev services with optional Redis
+│   └── prod/
+│       ├── Dockerfile     # Production optimized container
+│       └── docker-compose.yml  # Production services configuration
 ├── Makefile              # Docker-based development automation
-└── README.md             # This file
+├── requirements.txt       # Python dependencies
+├── .env.example          # Environment variable template
+└── README.md             # Project documentation
 ```
+
+### Main Application Components
+
+- **`app.py`**: FastAPI application with async lifespan management, comprehensive middleware stack, and all REST endpoints
+- **`chains.py`**: RAG system orchestrating query detection, document retrieval, LLM processing, and session memory
+- **`vector_stores/`**: Pluggable vector store architecture supporting both FAISS (local) and Pinecone (cloud) backends
+- **`ingest.py`**: Configurable data pipeline for processing CSV data into chunked documents with metadata
+- **`middleware.py`**: Request logging, performance monitoring, and error tracking for production observability
+- **`logging_config.py`**: Structured async logging with JSON formatting and daily log rotation
 
 ## 📈 Performance
 
@@ -306,60 +445,86 @@ python-rag-app-mvp/
 3. **Model Selection**: Use appropriate OpenAI models for your use case
 4. **Caching**: Consider Redis for session storage in production
 
-### Benchmarking
-
-```bash
-# Basic performance test
-make perf-test
-
-# Custom load test
-ab -n 1000 -c 10 http://localhost:8000/health
-```
-
-## 🔒 Security
-
-```bash
-# Run security scan
-make security-scan
-
-# Check for vulnerabilities
-safety check
-```
-
 ## 🚀 Production Deployment
 
-### Docker Compose (Recommended)
+⚠️ **Production Configuration Status**: The application has basic production Docker setup but requires additional configuration for full production deployment.
 
-```yaml
-# Use the included docker-compose.yml
-docker-compose --profile with-redis up -d
+### What's Currently Available
+
+✅ **Production Docker Setup**:
+```bash
+# Build and start production containers
+make build-prod
+make prod
+
+# Or with Redis support
+make prod-with-redis
+
+# Test production deployment
+make test-prod
 ```
 
-### Manual Deployment
+✅ **Production Features**:
+- Multi-stage Docker build with non-root user
+- Health checks configured
+- Resource limits set (1GB memory limit)
+- Production environment variables
+- Log rotation and structured logging
 
-1. Set `APP_ENV=production`
-2. Configure proper CORS origins
-3. Use a reverse proxy (nginx/traefik)
-4. Set up persistent storage for vector index
-5. Configure log aggregation
-6. Enable health checks and monitoring
+### What Needs Production Configuration
+
+❌ **Security & Networking**:
+- CORS origins are currently set to `["*"]` - needs restriction to actual frontend domains
+- No reverse proxy (nginx/traefik) configuration provided
+- No TLS/SSL certificate management
+
+❌ **Infrastructure**:
+- No container orchestration (Kubernetes/Docker Swarm) configuration
+- No load balancing setup
+- No backup/restore procedures for vector indices
+
+❌ **Monitoring & Logging**:
+- No centralized log aggregation setup (ELK/Grafana)
+- No metrics collection (Prometheus)
+- No alerting configuration
+
+### Basic Production Setup (Docker Compose)
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with production API keys
+
+# 2. Update CORS origins in app.py for your domains
+# 3. Build and deploy
+make build-prod && make prod-with-redis
+```
+
+### Recommended Production Architecture
+
+For a complete production deployment, consider:
+
+1. **Container Orchestration**: Kubernetes or Docker Swarm
+2. **Load Balancer**: nginx or Traefik with TLS termination  
+3. **Vector Storage**: Pinecone for cloud-managed vector storage
+4. **Session Storage**: Redis cluster for high availability
+5. **Monitoring**: Prometheus + Grafana + AlertManager
+6. **Logging**: Centralized logging with ELK stack
+7. **Backup**: Regular vector index and data backups
 
 ## 🔧 Troubleshooting
 
 ### Common Issues
 
 1. **"RAG system not available"**
-
    - Run `make ingest` to create vector index
    - Check OpenAI API key in `.env`
 
 2. **"No relevant products found"**
-
-   - Verify product data in `data/big-basket-products-28k.csv`
+   - Verify product data in `data/big-basket-products-{*}.csv`
    - Check embedding model configuration
 
 3. **Docker build fails**
-
    - Ensure Docker has enough memory allocated
    - Check network connectivity for package downloads
 
@@ -367,16 +532,23 @@ docker-compose --profile with-redis up -d
    - Reduce `RAG_TOP_K_RESULTS`
    - Consider using a smaller embedding model
 
-### Debug Mode
+## 📋 TODO & Future Improvements
 
-```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
-python app.py
+### 🔄 Data Management
+- **Document Upserts**: Replace full re-indexing with incremental updates for individual products
+- **Delta Sync**: Support partial data synchronization from external product catalogs
 
-# View detailed logs
-make logs
-```
+### 🎯 Retrieval Enhancement  
+- **Reranking**: Implement cross-encoder reranking or use Pinecone's native reranking features
+- **Truth Verification**: Add post-generation fact checking against source documents with confidence scores
+
+### 📊 Quality & Feedback
+- **User Feedback Loop**: Add rating system and click-through tracking for recommendation improvement
+- **Response Validation**: Implement hallucination detection and multi-source verification
+
+### 🔧 Performance & Caching
+- **Semantic Caching**: Cache similar queries and embeddings to reduce latency and API costs
+- **Query Expansion**: Add synonym expansion and query rewriting for better retrieval
 
 ## 🎉 Example Queries
 
