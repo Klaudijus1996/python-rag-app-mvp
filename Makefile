@@ -148,18 +148,16 @@ ingest-force:
 	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python ingest.py
 
 # Quick start - complete development setup
-quickstart: setup validate-env build
+quickstart: setup build
 	@echo "Starting quickstart setup..."
 	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) up -d
-	@echo "Waiting for container to be ready..."
-	@sleep 10
-	@echo "Running data ingestion..."
-	$(DOCKER_COMPOSE) -f $(DEV_COMPOSE_FILE) exec rag-app python ingest.py
 	@echo ""
 	@echo "🚀 Quickstart complete!"
 	@echo "   Development server: http://localhost:8000"
 	@echo "   API docs: http://localhost:8000/docs"
 	@echo "   ReDoc: http://localhost:8000/redoc"
+	@echo ""
+	@echo "⚠️  Remember to set your API keys in the .env file if needed"
 
 # Utility commands
 stop:
