@@ -8,11 +8,12 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from utils import DataConverter
 
 load_dotenv()
 
 # Configuration
-DATA_PATH = "data/products.csv"
+DATA_PATH = "data/big-basket-products-28k.csv"
 INDEX_DIR = "store/faiss"
 EMBED_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
@@ -31,29 +32,15 @@ def row_to_text(row: pd.Series) -> str:
     
     # Core product information
     core_info = f"""
-Name: {row.get('name', '')}
+Name: {row.get('product', '')}
 Category: {row.get('category', '')}
+Sub Category: {row.get('sub_category', '')}
 Brand: {row.get('brand', '')}
-Price: {row.get('price', '')} {row.get('currency', '')}
+Price: {row.get('sale_price', '')}
+Type: {row.get('type', '')}
+Rating: {row.get('rating', '')}
 Description: {row.get('description', '')}
 """
-    
-    # Price influencers and features
-    influencers = []
-    for field, label in [
-        ('materials', 'Materials'),
-        ('capacity', 'Capacity'),
-        ('features', 'Features'),
-        ('compatibility', 'Compatibility'),
-        ('variants', 'Variants'),
-        ('tags', 'Tags')
-    ]:
-        value = row.get(field, '')
-        if value and str(value).strip() and str(value) != 'nan':
-            influencers.append(f"{label}: {value}")
-    
-    if influencers:
-        core_info += "\n" + "\n".join(influencers)
     
     return core_info.strip()
 
@@ -62,23 +49,17 @@ def create_document_metadata(row: pd.Series) -> Dict[str, Any]:
     """Extract structured metadata from product row."""
     
     metadata = {
-        "product_id": str(row.get("product_id", "")),
-        "name": str(row.get("name", "")),
-        "brand": str(row.get("brand", "")),
-        "category": str(row.get("category", "")),
-        "price": float(row.get("price", 0)) if pd.notna(row.get("price")) else 0.0,
-        "currency": str(row.get("currency", "")),
-        "sku": str(row.get("sku", "")),
-        "url": str(row.get("url", "")),
-        "image_url": str(row.get("image_url", "")),
-        "tags": str(row.get("tags", "")),
-        "materials": str(row.get("materials", "")),
-        "capacity": str(row.get("capacity", "")),
-        "features": str(row.get("features", "")),
-        "stock": int(row.get("stock", 0)) if pd.notna(row.get("stock")) else 0
+        "product_id": DataConverter.to_string(row.get("index")),
+        "name": DataConverter.to_string(row.get("product")),
+        "brand": DataConverter.to_string(row.get("brand")),
+        "category": DataConverter.to_string(row.get("category")),
+        "sub_category": DataConverter.to_string(row.get("sub_category")),
+        "price": DataConverter.to_float(row.get("sale_price")),
+        "type": DataConverter.to_string(row.get("type")),
+        "rating": DataConverter.to_float(row.get("rating"))
     }
     
-    # Clean empty string values
+    # Clean empty string values but keep 0.0 float values
     return {k: v for k, v in metadata.items() if v != ""}
 
 

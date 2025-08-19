@@ -1,15 +1,14 @@
 import os
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_core.runnables import RunnablePassthrough, RunnableMap
-from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.documents import Document
 from schema import QueryType, ProductInfo
+from utils import DataConverter
 
 # Configuration
 INDEX_DIR = "store/faiss"
@@ -65,19 +64,22 @@ def detect_query_type(query: str) -> QueryType:
     # Comparison keywords
     comparison_keywords = [
         "compare", "vs", "versus", "difference", "better", "which",
-        "between", "against", "comparison"
+        "between", "against", "comparison", "brand vs brand", 
+        "generic vs branded", "cheaper alternative"
     ]
     
     # Complement keywords - match patterns more flexibly
     complement_keywords = [
         "complement", "go with", "goes with", "pair", "pairs", "accessories",
-        "compatible", "works with", "work with", "bundle", "set"
+        "compatible", "works with", "work with", "bundle", "set", 
+        "recipe ingredients", "meal planning", "household essentials"
     ]
     
     # Recommendation keywords
     recommendation_keywords = [
         "recommend", "suggest", "best", "good", "find", "looking for",
-        "need", "want", "show me", "help me choose"
+        "need", "want", "show me", "help me choose", "organic", "healthy", 
+        "budget", "family pack", "bulk", "premium"
     ]
     
     if any(keyword in query_lower for keyword in comparison_keywords):
@@ -103,13 +105,14 @@ def format_docs(docs: List[Document]) -> str:
         # Format product information
         product_info = f"""[Product {i}] {metadata.get('name', 'Unknown')} 
 Brand: {metadata.get('brand', 'Unknown')}
-Price: {metadata.get('price', 'Unknown')} {metadata.get('currency', '')}
+Price: {metadata.get('price', 'Unknown')}
 Category: {metadata.get('category', 'Unknown')}
+Sub Category: {metadata.get('sub_category', 'Unknown')}
+Type: {metadata.get('type', 'Unknown')}
+Rating: {metadata.get('rating', 'Unknown')}
 Product ID: {metadata.get('product_id', 'Unknown')}
 
 {doc.page_content}
-
-URL: {metadata.get('url', 'Not available')}
 """
         formatted_docs.append(product_info)
     
@@ -125,15 +128,17 @@ def extract_products_from_docs(docs: List[Document]) -> List[ProductInfo]:
         
         try:
             product = ProductInfo(
-                product_id=metadata.get('product_id', ''),
-                name=metadata.get('name', ''),
-                brand=metadata.get('brand', ''),
-                category=metadata.get('category', ''),
-                price=float(metadata.get('price', 0)),
-                currency=metadata.get('currency', ''),
+                product_id=DataConverter.to_string(metadata.get('product_id')),
+                name=DataConverter.to_string(metadata.get('name')),
+                brand=DataConverter.to_string(metadata.get('brand')),
+                category=DataConverter.to_string(metadata.get('category')),
+                sub_category=DataConverter.to_string(metadata.get('sub_category')) if metadata.get('sub_category') else None,
+                price=DataConverter.to_float(metadata.get('price')),
+                type=DataConverter.to_string(metadata.get('type')) if metadata.get('type') else None,
+                rating=DataConverter.to_float(metadata.get('rating')) if metadata.get('rating') else None,
                 description=doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
-                url=metadata.get('url'),
-                image_url=metadata.get('image_url')
+                url=DataConverter.to_string(metadata.get('url')) if metadata.get('url') else None,
+                image_url=DataConverter.to_string(metadata.get('image_url')) if metadata.get('image_url') else None
             )
             products.append(product)
         except Exception as e:
@@ -144,13 +149,13 @@ def extract_products_from_docs(docs: List[Document]) -> List[ProductInfo]:
 
 
 # Enhanced system prompt for different query types
-SYSTEM_PROMPT = """You are an expert retail shopping assistant specializing in product recommendations and comparisons.
+SYSTEM_PROMPT = """You are an expert grocery and household products shopping assistant specializing in product recommendations and comparisons.
 
 CORE PRINCIPLES:
 - Base ALL product facts on the provided catalog context
 - If unsure about any detail, state "I don't have that information in the catalog"
 - Provide concise, factual answers focused on helping customers make informed decisions
-- Always explain price influencers when relevant: brand reputation, materials/quality, capacity/size, advanced features, warranty/support, limited editions
+- Always explain price influencers when relevant: brand reputation, nutritional value, pack size/quantity, organic/premium quality
 
 RESPONSE FORMATS by query type:
 
@@ -180,9 +185,10 @@ FOR GENERAL INFORMATION:
 - Cite specific product details from catalog
 
 CONSTRAINTS:
-- No medical or financial advice claims
+- No medical/health claims about food products or nutritional benefits
 - No hallucinated product features or specifications
 - If catalog lacks information, be explicit about limitations
+- Focus on practical usage scenarios (family size, dietary preferences, storage needs)
 - Keep responses focused and actionable
 """
 

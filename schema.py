@@ -66,8 +66,10 @@ class ProductInfo(BaseModel):
     name: str
     brand: str
     category: str
+    sub_category: Optional[str] = None
     price: float
-    currency: str
+    type: Optional[str] = None
+    rating: Optional[float] = None
     description: str
     url: Optional[str] = None
     image_url: Optional[str] = None

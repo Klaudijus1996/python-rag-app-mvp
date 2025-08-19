@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "Grocery & Household Products RAG API",
+    "description": "Postman collection for testing the Grocery & Household Products RAG application endpoints",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "{{$randomUUID}}",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Check the health status of the application and vector index"
+      },
+      "response": []
+    },
+    {
+      "name": "Root Endpoint",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/",
+          "host": ["{{base_url}}"],
+          "path": [""]
+        },
+        "description": "Root endpoint that provides basic application information"
+      },
+      "response": []
+    },
+    {
+      "name": "Data Ingestion",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force_reindex\": false,\n  \"chunk_size\": 1000,\n  \"chunk_overlap\": 200\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/ingest",
+          "host": ["{{base_url}}"],
+          "path": ["ingest"]
+        },
+        "description": "Trigger data ingestion and vector store creation. Run this first to prepare the system."
+      },
+      "response": []
+    },
+    {
+      "name": "Data Ingestion - Force Reindex",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"force_reindex\": true,\n  \"chunk_size\": 1200,\n  \"chunk_overlap\": 250\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/ingest",
+          "host": ["{{base_url}}"],
+          "path": ["ingest"]
+        },
+        "description": "Force reindexing with custom chunk parameters"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Product Recommendation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"I need good hand soap for sensitive skin\",\n  \"query_type\": \"recommendation\",\n  \"max_products\": 5\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Ask for grocery/household product recommendations"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Product Comparison",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"Compare cleaning wipes under 200 price range\",\n  \"query_type\": \"comparison\",\n  \"max_products\": 8,\n  \"price_range\": {\n    \"min\": 100,\n    \"max\": 200\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Compare household products with price filtering"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - With Category Filter",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"Show me storage containers for kitchen\",\n  \"query_type\": \"recommendation\",\n  \"max_products\": 6,\n  \"category_filter\": \"Kitchen, Garden & Pets\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Grocery/household product query with category filtering"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Information Query",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"What are the benefits of using natural soap?\",\n  \"query_type\": \"information\",\n  \"max_products\": 3\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "General information query about beauty and hygiene products"
+      },
+      "response": []
+    },
+    {
+      "name": "Retrieve Documents",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/retrieve/cleaning products",
+          "host": ["{{base_url}}"],
+          "path": ["retrieve", "cleaning products"]
+        },
+        "description": "Retrieve relevant documents without generating a chat response"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Brand Comparison",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"Compare Nivea vs other brands for body soap\",\n  \"query_type\": \"comparison\",\n  \"max_products\": 5\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Compare different brands for specific product category"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Product Complements",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"What cleaning products go well with multipurpose wipes?\",\n  \"query_type\": \"complement\",\n  \"max_products\": 4\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Find complementary products that work well together"
+      },
+      "response": []
+    },
+    {
+      "name": "Chat - Budget-Friendly Options",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"query\": \"Show me budget storage solutions under 150\",\n  \"query_type\": \"recommendation\",\n  \"max_products\": 6,\n  \"price_range\": {\n    \"min\": 50,\n    \"max\": 150\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Find budget-friendly products within a specific price range"
+      },
+      "response": []
+    },
+    {
+      "name": "Get Session Info",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/sessions/{{session_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["sessions", "{{session_id}}"]
+        },
+        "description": "Get information about a specific user session"
+      },
+      "response": []
+    },
+    {
+      "name": "Clear Session",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/sessions/{{session_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["sessions", "{{session_id}}"]
+        },
+        "description": "Clear a user session and its conversation history"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-generate session ID if not set",
+          "if (!pm.collectionVariables.get('session_id')) {",
+          "    pm.collectionVariables.set('session_id', pm.variables.replaceIn('{{$randomUUID}}'));",
+          "}"
+        ]
+      }
+    }
+  ]
+}

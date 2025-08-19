@@ -15,21 +15,21 @@ class TestQueryTypeDetection:
     
     def test_recommendation_detection(self):
         queries = [
-            "I need a good laptop",
-            "Can you recommend a water bottle?",
-            "What's the best smartphone under 500?",
-            "Help me find a backpack",
-            "Looking for workout equipment"
+            "I need good hand soap",
+            "Can you recommend storage containers?",
+            "What's the best cleaning wipes under 200?",
+            "Help me find household products",
+            "Looking for organic products"
         ]
         for query in queries:
             assert detect_query_type(query) == QueryType.RECOMMENDATION
     
     def test_comparison_detection(self):
         queries = [
-            "Compare iPhone vs Samsung",
-            "What's the difference between these laptops?",
-            "Which is better: laptop A or laptop B?",
-            "MacBook vs ThinkPad comparison",
+            "Compare Nivea vs other soap brands",
+            "What's the difference between these cleaning wipes?",
+            "Which is better: container A or container B?",
+            "Brand vs generic comparison",
             "Show me the differences between these products"
         ]
         for query in queries:
@@ -37,10 +37,10 @@ class TestQueryTypeDetection:
     
     def test_complement_detection(self):
         queries = [
-            "What accessories go with this laptop?",
-            "What pairs well with this coffee grinder?",
-            "Compatible products for iPhone",
-            "What works with this camera?",
+            "What cleaning supplies go with these wipes?",
+            "What pairs well with this storage container?",
+            "Compatible products for household cleaning",
+            "What works with this soap?",
             "Bundle recommendations for this item"
         ]
         for query in queries:
@@ -68,37 +68,40 @@ class TestDocumentFormatting:
     def test_format_docs_with_products(self):
         docs = [
             Document(
-                page_content="Great laptop for work",
+                page_content="Great storage container for kitchen",
                 metadata={
-                    "name": "MacBook Pro",
-                    "brand": "Apple",
-                    "price": 1299.99,
-                    "currency": "USD",
-                    "category": "Laptops",
-                    "product_id": "P001",
-                    "url": "https://example.com/macbook"
+                    "name": "Storage Container Set",
+                    "brand": "Nakoda",
+                    "price": 149.0,
+                    "category": "Cleaning & Household",
+                    "sub_category": "Bins & Bathroom Ware",
+                    "type": "Storage Baskets",
+                    "rating": 3.7,
+                    "product_id": "4"
                 }
             ),
             Document(
-                page_content="Lightweight and durable",
+                page_content="Multipurpose cleaning wipes",
                 metadata={
-                    "name": "ThinkPad X1",
-                    "brand": "Lenovo",
-                    "price": 999.99,
-                    "currency": "USD",
-                    "category": "Laptops",
-                    "product_id": "P002"
+                    "name": "Germ Removal Wipes",
+                    "brand": "Nature Protect",
+                    "price": 169.0,
+                    "category": "Cleaning & Household",
+                    "sub_category": "All Purpose Cleaners",
+                    "type": "Disinfectant Spray & Cleaners",
+                    "rating": 3.3,
+                    "product_id": "6"
                 }
             )
         ]
         
         result = format_docs(docs)
-        assert "MacBook Pro" in result
-        assert "Apple" in result
-        assert "1299.99" in result
-        assert "ThinkPad X1" in result
-        assert "Lenovo" in result
-        assert "https://example.com/macbook" in result
+        assert "Storage Container Set" in result
+        assert "Nakoda" in result
+        assert "149.0" in result
+        assert "Germ Removal Wipes" in result
+        assert "Nature Protect" in result
+        assert "3.7" in result
 
 
 class TestProductExtraction:
@@ -107,16 +110,16 @@ class TestProductExtraction:
     def test_extract_products_from_docs(self):
         docs = [
             Document(
-                page_content="High-quality laptop with excellent performance",
+                page_content="High-quality storage container with excellent design",
                 metadata={
-                    "product_id": "P001",
-                    "name": "MacBook Pro",
-                    "brand": "Apple",
-                    "category": "Laptops",
-                    "price": 1299.99,
-                    "currency": "USD",
-                    "url": "https://example.com/macbook",
-                    "image_url": "https://example.com/images/macbook.jpg"
+                    "product_id": "4",
+                    "name": "Storage Container Set",
+                    "brand": "Nakoda",
+                    "category": "Cleaning & Household",
+                    "sub_category": "Bins & Bathroom Ware",
+                    "price": 149.0,
+                    "type": "Storage Baskets",
+                    "rating": 3.7
                 }
             )
         ]
@@ -126,32 +129,34 @@ class TestProductExtraction:
         
         product = products[0]
         assert isinstance(product, ProductInfo)
-        assert product.product_id == "P001"
-        assert product.name == "MacBook Pro"
-        assert product.brand == "Apple"
-        assert product.category == "Laptops"
-        assert product.price == 1299.99
-        assert product.currency == "USD"
-        assert product.url == "https://example.com/macbook"
+        assert product.product_id == "4"
+        assert product.name == "Storage Container Set"
+        assert product.brand == "Nakoda"
+        assert product.category == "Cleaning & Household"
+        assert product.sub_category == "Bins & Bathroom Ware"
+        assert product.price == 149.0
+        assert product.type == "Storage Baskets"
+        assert product.rating == 3.7
     
     def test_extract_products_with_invalid_data(self):
         docs = [
             Document(
                 page_content="Test content",
                 metadata={
-                    "product_id": "P001",
+                    "product_id": "1",
                     "name": "Test Product",
                     "brand": "Test Brand",
                     "category": "Test Category",
-                    "price": "invalid_price",  # Invalid price
-                    "currency": "USD"
+                    "price": "invalid_price"  # Invalid price
                 }
             )
         ]
         
         products = extract_products_from_docs(docs)
-        # Should handle invalid data gracefully
-        assert len(products) == 0
+        # Should handle invalid data gracefully and create product with default values
+        assert len(products) == 1
+        product = products[0]
+        assert product.price == 0.0  # Invalid price converted to default
 
 
 @pytest.fixture
@@ -164,14 +169,16 @@ def mock_vector_store():
         # Mock documents to return
         mock_docs = [
             Document(
-                page_content="Excellent water bottle for outdoor activities",
+                page_content="Excellent storage container for household use",
                 metadata={
-                    "product_id": "P001",
-                    "name": "HydroFlask 32oz",
-                    "brand": "HydroFlask",
-                    "category": "Drinkware",
-                    "price": 39.99,
-                    "currency": "USD"
+                    "product_id": "4",
+                    "name": "Storage Container Set",
+                    "brand": "Nakoda",
+                    "category": "Cleaning & Household",
+                    "sub_category": "Bins & Bathroom Ware",
+                    "price": 149.0,
+                    "type": "Storage Baskets",
+                    "rating": 3.7
                 }
             )
         ]
@@ -226,7 +233,7 @@ class TestRAGSystem:
         with patch('os.path.exists', return_value=True):
             rag_system = RAGSystem()
             
-            result = rag_system.retrieve("water bottle")
+            result = rag_system.retrieve("storage containers")
             assert "documents" in result
             assert "products" in result
             assert "query_type" in result
@@ -257,16 +264,16 @@ class TestIntegration:
             rag_system = RAGSystem()
             
             # Test retrieval
-            retrieval_result = rag_system.retrieve("recommend a water bottle")
+            retrieval_result = rag_system.retrieve("recommend storage containers")
             assert retrieval_result["query_type"] == QueryType.RECOMMENDATION
             assert len(retrieval_result["products"]) > 0
             
             # Test query processing
             with patch.object(rag_system, 'rag_chain') as mock_chain:
-                mock_chain.invoke.return_value = "I recommend the HydroFlask 32oz..."
+                mock_chain.invoke.return_value = "I recommend the Storage Container Set..."
                 
-                response = rag_system.query("recommend a water bottle", "test_session")
-                assert "HydroFlask" in response
+                response = rag_system.query("recommend storage containers", "test_session")
+                assert "Storage Container" in response
 
 
 def test_environment_variable_handling():

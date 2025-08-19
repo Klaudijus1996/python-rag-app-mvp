@@ -18,18 +18,20 @@ def client():
 def mock_rag_system():
     """Mock RAG system for testing."""
     rag = Mock(spec=RAGSystem)
-    rag.query.return_value = "This is a test response about water bottles."
+    rag.query.return_value = "This is a test response about storage containers."
     rag.retrieve.return_value = {
         "documents": [],
         "products": [
             ProductInfo(
-                product_id="P001",
-                name="Test Water Bottle",
+                product_id="1",
+                name="Storage Container Set",
                 brand="TestBrand",
-                category="Drinkware",
-                price=29.99,
-                currency="USD",
-                description="A great water bottle for testing"
+                category="Cleaning & Household",
+                sub_category="Storage & Accessories",
+                price=150.0,
+                type="Storage Baskets",
+                rating=4.2,
+                description="A great storage container for testing"
             )
         ],
         "query_type": QueryType.RECOMMENDATION,
@@ -76,7 +78,7 @@ class TestChatEndpoint:
         try:
             payload = {
                 "session_id": "test_session",
-                "query": "I need a water bottle for hiking",
+                "query": "I need storage containers for my kitchen",
                 "max_products": 3
             }
             response = client.post("/chat", json=payload)
@@ -126,8 +128,8 @@ class TestChatEndpoint:
             payload = {
                 "session_id": "test_session",
                 "query": "recommend a product",
-                "category_filter": "Drinkware",
-                "price_range": {"min": 20.0, "max": 50.0},
+                "category_filter": "Cleaning & Household",
+                "price_range": {"min": 100.0, "max": 200.0},
                 "max_products": 2
             }
             response = client.post("/chat", json=payload)
@@ -277,11 +279,11 @@ class TestRetrieveEndpoint:
         """Test document retrieval."""
         app.dependency_overrides[get_rag_system] = lambda: mock_rag_system
         try:
-            response = client.get("/retrieve/water bottle")
+            response = client.get("/retrieve/storage containers")
             assert response.status_code == 200
             
             data = response.json()
-            assert data["query"] == "water bottle"
+            assert data["query"] == "storage containers"
             assert "query_type" in data
             assert "products" in data
             assert "document_count" in data
@@ -351,7 +353,7 @@ class TestRootEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert "Retail RAG MVP is running" in data["message"]
+        assert "RAG MVP is running" in data["message"]
 
 
 @pytest.mark.asyncio

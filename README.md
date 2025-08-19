@@ -1,11 +1,11 @@
 # Python RAG App MVP
 
-A production-ready Retrieval-Augmented Generation (RAG) application built with FastAPI, LangChain, and FAISS for intelligent product recommendations and queries.
+A production-ready Retrieval-Augmented Generation (RAG) application built with FastAPI, LangChain, and FAISS for intelligent grocery and household product recommendations and queries.
 
 ## 🚀 Features
 
-- **Intelligent Product Recommendations**: AI-powered product suggestions based on user queries
-- **Price Influencer Analysis**: Explains pricing factors like brand, materials, features, and capacity
+- **Intelligent Product Recommendations**: AI-powered grocery and household product suggestions based on user queries
+- **Price Influencer Analysis**: Explains pricing factors like brand reputation, nutritional value, pack size, and organic/premium quality
 - **Multi-Query Support**: Handles recommendations, comparisons, complements, and information queries
 - **Session Memory**: Maintains conversation context for follow-up questions
 - **FastAPI Backend**: Modern, async API with automatic documentation
@@ -106,7 +106,7 @@ curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "user-123",
-    "query": "I need a durable 1L stainless steel water bottle under 30 EUR",
+    "query": "I need good storage containers for my kitchen under 200",
     "max_products": 3
   }'
 ```
@@ -118,9 +118,9 @@ curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "user-123",
-    "query": "recommend a laptop for programming",
-    "category_filter": "Electronics",
-    "price_range": {"min": 500, "max": 1500},
+    "query": "recommend cleaning products for household use",
+    "category_filter": "Cleaning & Household",
+    "price_range": {"min": 100, "max": 300},
     "max_products": 5
   }'
 ```
@@ -197,7 +197,7 @@ make clean         # Clean up containers and images
 The app expects CSV data with these columns:
 
 ```csv
-product_id,name,category,brand,price,currency,description,features,materials,capacity,compatibility,variants,stock,sku,url,image_url,tags
+index,product,category,sub_category,brand,sale_price,market_price,type,rating,description
 ```
 
 ### Ingestion Commands
@@ -220,25 +220,25 @@ The system automatically detects and handles different query types:
 ### 1. Recommendations
 
 ```
-"I need a laptop for gaming"
-"Recommend a water bottle for hiking"
-"Best smartphone under $500"
+"I need good hand soap for sensitive skin"
+"Recommend storage containers for my pantry"
+"Best cleaning wipes under 200"
 ```
 
 ### 2. Comparisons
 
 ```
-"Compare iPhone vs Samsung Galaxy"
-"What's the difference between these laptops?"
-"Which is better: Product A or Product B?"
+"Compare Nivea vs other soap brands"
+"What's the difference between these cleaning wipes?"
+"Which storage container is better for food?"
 ```
 
 ### 3. Complements
 
 ```
-"What accessories go with this laptop?"
-"Compatible products for this camera"
-"What pairs well with this coffee maker?"
+"What cleaning supplies go with these wipes?"
+"What storage accessories complement this container?"
+"What household items work well with this soap?"
 ```
 
 ### 4. Information
@@ -286,7 +286,7 @@ python-rag-app-mvp/
 ├── ingest.py              # Data ingestion script
 ├── logging_config.py      # Structured logging with async support
 ├── middleware.py          # Request logging and monitoring middleware
-├── data/products.csv      # Sample product catalog
+├── data/big-basket-products-28k.csv      # Sample product catalog consting of almost 28k products
 ├── store/faiss/           # FAISS vector index
 ├── storage/logs/          # Application logs with daily rotation
 ├── tests/                 # Test suite
@@ -355,7 +355,7 @@ docker-compose --profile with-redis up -d
 
 2. **"No relevant products found"**
 
-   - Verify product data in `data/products.csv`
+   - Verify product data in `data/big-basket-products-28k.csv`
    - Check embedding model configuration
 
 3. **Docker build fails**
@@ -401,5 +401,5 @@ curl -X POST "http://localhost:8000/chat" \
 # Complementary products
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
-  -d '{"session_id": "demo", "query": "What accessories would go well with a laptop for remote work?"}'
+  -d '{"session_id": "demo", "query": "What cleaning products would go well with multipurpose wipes?"}'
 ```
