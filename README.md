@@ -532,6 +532,24 @@ For a complete production deployment, consider:
    - Reduce `RAG_TOP_K_RESULTS`
    - Consider using a smaller embedding model
 
+## 📋 TODO & Future Improvements
+
+### 🔄 Data Management
+- **Document Upserts**: Replace full re-indexing with incremental updates for individual products
+- **Delta Sync**: Support partial data synchronization from external product catalogs
+
+### 🎯 Retrieval Enhancement  
+- **Reranking**: Implement cross-encoder reranking or use Pinecone's native reranking features
+- **Truth Verification**: Add post-generation fact checking against source documents with confidence scores
+
+### 📊 Quality & Feedback
+- **User Feedback Loop**: Add rating system and click-through tracking for recommendation improvement
+- **Response Validation**: Implement hallucination detection and multi-source verification
+
+### 🔧 Performance & Caching
+- **Semantic Caching**: Cache similar queries and embeddings to reduce latency and API costs
+- **Query Expansion**: Add synonym expansion and query rewriting for better retrieval
+
 ## 🎉 Example Queries
 
 Try these sample queries to explore the system:
