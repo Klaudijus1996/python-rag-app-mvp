@@ -231,18 +231,35 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.logger = get_logger("middleware.performance")
         self.slow_request_threshold = slow_request_threshold
+        self.concurrent_requests = 0
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Monitor request performance."""
         start_time = time.time()
+        
+        # Track concurrent requests
+        self.concurrent_requests += 1
+        max_concurrent = getattr(self, '_max_concurrent', 0)
+        if self.concurrent_requests > max_concurrent:
+            self._max_concurrent = self.concurrent_requests
+        
+        # Log high concurrency for expensive endpoints
+        if self.concurrent_requests > 5 and request.url.path in ["/chat", "/retrieve"]:
+            asyncio.create_task(self._log_high_concurrency(request, self.concurrent_requests))
 
-        response = await call_next(request)
-
-        processing_time = time.time() - start_time
-
-        # Log slow requests
-        if processing_time > self.slow_request_threshold:
-            asyncio.create_task(self._log_slow_request(request, processing_time))
+        try:
+            response = await call_next(request)
+        finally:
+            processing_time = time.time() - start_time
+            self.concurrent_requests -= 1
+            
+            # Log slow requests
+            if processing_time > self.slow_request_threshold:
+                asyncio.create_task(self._log_slow_request(request, processing_time))
+            
+            # Log performance metrics for expensive endpoints
+            if request.url.path in ["/chat", "/retrieve", "/ingest"]:
+                asyncio.create_task(self._log_endpoint_metrics(request, processing_time))
 
         return response
 
@@ -261,6 +278,37 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
             )
         except Exception as e:
             self.logger.error(f"Error logging slow request: {e}", exc_info=True)
+    
+    async def _log_high_concurrency(self, request: Request, concurrent_count: int):
+        """Log high concurrency events."""
+        try:
+            self.logger.info(
+                "High concurrency detected",
+                extra={
+                    "event": "high_concurrency",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "concurrent_requests": concurrent_count,
+                },
+            )
+        except Exception as e:
+            self.logger.error(f"Error logging high concurrency: {e}", exc_info=True)
+    
+    async def _log_endpoint_metrics(self, request: Request, processing_time: float):
+        """Log performance metrics for expensive endpoints."""
+        try:
+            self.logger.info(
+                "Endpoint performance metrics",
+                extra={
+                    "event": "endpoint_metrics",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "processing_time": round(processing_time, 4),
+                    "max_concurrent_seen": getattr(self, '_max_concurrent', 0),
+                },
+            )
+        except Exception as e:
+            self.logger.error(f"Error logging endpoint metrics: {e}", exc_info=True)
 
 
 class ErrorTrackingMiddleware(BaseHTTPMiddleware):

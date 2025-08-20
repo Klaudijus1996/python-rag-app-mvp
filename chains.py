@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
@@ -20,18 +21,19 @@ SIMILARITY_THRESHOLD = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.7"))
 logger = logging.getLogger(__name__)
 
 
-def load_retriever(k: int = TOP_K, search_type: str = "mmr") -> Any:
+async def load_retriever(k: int = TOP_K, search_type: str = "mmr") -> Any:
     """Load and configure the document retriever using vector store abstraction."""
 
     try:
         # Create vector store using factory pattern
         vector_store = VectorStoreFactory.create_from_env()
 
-        # Load existing vector store
-        vector_store.load_existing()
+        # Load existing vector store in thread pool
+        await asyncio.to_thread(vector_store.load_existing)
 
         # Get retriever with specified configuration
-        retriever = vector_store.get_retriever(
+        retriever = await asyncio.to_thread(
+            vector_store.get_retriever,
             search_type=search_type,
             k=k,
             lambda_mult=0.4 if search_type == "mmr" else None,
@@ -247,12 +249,12 @@ Please provide a helpful response based on the catalog information above.""",
 )
 
 
-def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
+async def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
     """Build the complete RAG chain with memory."""
 
     try:
         # Initialize components
-        retriever = load_retriever()
+        retriever = await load_retriever()
         llm = ChatOpenAI(
             model=MODEL_CHAT,
             temperature=0.1,  # Low temperature for factual responses
@@ -266,10 +268,10 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
             return session_store[session_id]
 
         # Build chain that works directly with RunnableWithMessageHistory
-        def rag_chain_func(inputs: dict):
+        async def rag_chain_func(inputs: dict):
             question = inputs["question"]
-            # Get documents
-            docs = retriever.invoke(question)
+            # Get documents using asyncio.to_thread for thread safety
+            docs = await asyncio.to_thread(retriever.invoke, question)
             # Prepare inputs for prompt
             prompt_inputs = {
                 "question": question,
@@ -281,7 +283,7 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
             }
             # Run through prompt -> LLM -> parser
             messages = prompt.format_messages(**prompt_inputs)
-            response = llm.invoke(messages)
+            response = await llm.ainvoke(messages)
             # Extract content from AIMessage
             return response.content if hasattr(response, "content") else str(response)
 
@@ -290,13 +292,28 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
 
         rag_chain = RunnableLambda(rag_chain_func)
 
-        # Wrap with memory
-        rag_with_memory = RunnableWithMessageHistory(
-            rag_chain,
-            get_session_history,
-            input_messages_key="question",
-            history_messages_key="history",
-        )
+        # For async functions, we need to handle the memory differently
+        # Create a wrapper that handles session history manually
+        async def rag_with_memory_func(inputs: dict, config: dict = None):
+            session_id = config.get("configurable", {}).get("session_id") if config else None
+            if session_id:
+                history = get_session_history(session_id)
+                # Add the history to inputs
+                inputs["history"] = history.messages
+                
+                # Process with the chain
+                response = await rag_chain_func(inputs)
+                
+                # Add the interaction to history
+                from langchain_core.messages import HumanMessage, AIMessage
+                history.add_message(HumanMessage(content=inputs["question"]))
+                history.add_message(AIMessage(content=response))
+                
+                return response
+            else:
+                return await rag_chain_func(inputs)
+        
+        rag_with_memory = RunnableLambda(rag_with_memory_func)
 
         logger.info("RAG chain built successfully")
         return rag_with_memory
@@ -306,14 +323,14 @@ def build_rag_chain(session_store: Dict[str, ChatMessageHistory]):
         raise
 
 
-def build_retrieval_chain():
+async def build_retrieval_chain():
     """Build a simple retrieval chain for getting relevant documents."""
 
     try:
-        retriever = load_retriever()
+        retriever = await load_retriever()
 
-        def retrieve_with_metadata(query: str) -> Dict[str, Any]:
-            docs = retriever.invoke(query)
+        async def retrieve_with_metadata(query: str) -> Dict[str, Any]:
+            docs = await asyncio.to_thread(retriever.invoke, query)
             return {
                 "documents": docs,
                 "products": extract_products_from_docs(docs),
@@ -335,26 +352,32 @@ class RAGSystem:
         self.session_store: Dict[str, ChatMessageHistory] = {}
         self.rag_chain = None
         self.retrieval_chain = None
-        self._initialize()
+        self._initialization_task = None
 
-    def _initialize(self):
+    async def initialize(self):
+        """Public method to initialize the RAG system asynchronously."""
+        if not self._initialization_task:
+            self._initialization_task = asyncio.create_task(self._initialize())
+        return await self._initialization_task
+
+    async def _initialize(self):
         """Initialize the RAG system components."""
         try:
-            self.rag_chain = build_rag_chain(self.session_store)
-            self.retrieval_chain = build_retrieval_chain()
+            self.rag_chain = await build_rag_chain(self.session_store)
+            self.retrieval_chain = await build_retrieval_chain()
             logger.info("RAG system initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize RAG system: {e}", exc_info=True)
             raise
 
-    def query(self, question: str, session_id: str) -> str:
+    async def query(self, question: str, session_id: str) -> str:
         """Process a user query and return a response."""
         if not self.rag_chain:
-            raise RuntimeError("RAG chain not initialized")
+            await self.initialize()
 
         try:
-            # Pass the question as a dictionary input since RunnableMap expects dict
-            response = self.rag_chain.invoke(
+            # Pass the question as a dictionary input with session config
+            response = await self.rag_chain.ainvoke(
                 {"question": question},
                 config={"configurable": {"session_id": session_id}},
             )
@@ -363,13 +386,13 @@ class RAGSystem:
             logger.error(f"Query processing failed: {e}", exc_info=True)
             raise
 
-    def retrieve(self, query: str) -> Dict[str, Any]:
+    async def retrieve(self, query: str) -> Dict[str, Any]:
         """Retrieve relevant documents without generating a response."""
         if not self.retrieval_chain:
-            raise RuntimeError("Retrieval chain not initialized")
+            await self.initialize()
 
         try:
-            return self.retrieval_chain(query)
+            return await self.retrieval_chain(query)
         except Exception as e:
             logger.error(f"Document retrieval failed: {e}", exc_info=True)
             raise

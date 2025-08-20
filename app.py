@@ -1,10 +1,12 @@
 import os
 import time
+import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Dict, Any
 from pathlib import Path
+from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from dotenv import load_dotenv
@@ -48,6 +50,22 @@ logger = get_logger(__name__)
 # Global RAG system instance
 rag_system: Optional[RAGSystem] = None
 
+# Global ingestion status tracking
+ingestion_status: Dict[str, Any] = {
+    "status": "idle",  # idle, running, completed, failed
+    "progress": 0,
+    "message": "No ingestion in progress",
+    "start_time": None,
+    "end_time": None,
+    "chunks_indexed": 0,
+    "products_processed": 0,
+    "error": None
+}
+
+# Semaphore to limit concurrent expensive operations
+max_concurrent_queries = int(os.getenv("MAX_CONCURRENT_QUERIES", "3"))
+query_semaphore = asyncio.Semaphore(max_concurrent_queries)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,6 +77,7 @@ async def lifespan(app: FastAPI):
     try:
         if check_index_exists():
             rag_system = RAGSystem()
+            await rag_system.initialize()
             logger.info("RAG system initialized successfully")
         else:
             logger.warning("Vector index not found. Run ingestion first.")
@@ -106,7 +125,7 @@ app.add_middleware(
 )
 
 
-def get_rag_system() -> RAGSystem:
+async def get_rag_system() -> RAGSystem:
     """Dependency to get RAG system instance."""
     global rag_system
 
@@ -114,6 +133,7 @@ def get_rag_system() -> RAGSystem:
     if rag_system is None and check_index_exists():
         try:
             rag_system = RAGSystem()
+            await rag_system.initialize()
             logger.info("RAG system initialized on-demand after external ingestion")
         except Exception as e:
             logger.error(
@@ -194,75 +214,151 @@ async def health():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, rag: RAGSystem = Depends(get_rag_system)):
     """Main chat endpoint for product queries."""
-    try:
-        start_time = time.time()
+    # Use semaphore to limit concurrent processing
+    async with query_semaphore:
+        try:
+            start_time = time.time()
 
-        # Validate request
-        if not request.query.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Query cannot be empty"
+            # Validate request
+            if not request.query.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Query cannot be empty"
+                )
+
+            # Process query
+            logger.info(
+                f"Processing query for session {request.session_id}: {request.query[:100]}..."
             )
 
-        # Process query
-        logger.info(
-            f"Processing query for session {request.session_id}: {request.query[:100]}..."
-        )
+            # Get response from RAG system (now async)
+            answer = await rag.query(request.query, request.session_id)
 
-        # Get response from RAG system
-        answer = rag.query(request.query, request.session_id)
+            # Get relevant products for additional context (now async)
+            retrieval_result = await rag.retrieve(request.query)
+            products = retrieval_result.get("products", [])
+            detected_query_type = retrieval_result.get("query_type", QueryType.INFORMATION)
 
-        # Get relevant products for additional context
-        retrieval_result = rag.retrieve(request.query)
-        products = retrieval_result.get("products", [])
-        detected_query_type = retrieval_result.get("query_type", QueryType.INFORMATION)
+            # Apply filters if provided
+            if request.category_filter:
+                products = [
+                    p
+                    for p in products
+                    if request.category_filter.lower() in p.category.lower()
+                ]
 
-        # Apply filters if provided
-        if request.category_filter:
-            products = [
-                p
-                for p in products
-                if request.category_filter.lower() in p.category.lower()
-            ]
+            if request.price_range:
+                min_price = request.price_range.get("min", 0)
+                max_price = request.price_range.get("max", float("inf"))
+                products = [p for p in products if min_price <= p.price <= max_price]
 
-        if request.price_range:
-            min_price = request.price_range.get("min", 0)
-            max_price = request.price_range.get("max", float("inf"))
-            products = [p for p in products if min_price <= p.price <= max_price]
+            # Limit number of products
+            products = products[: request.max_products]
 
-        # Limit number of products
-        products = products[: request.max_products]
+            processing_time = time.time() - start_time
+            logger.info(f"Query processed in {processing_time:.2f}s")
 
-        processing_time = time.time() - start_time
-        logger.info(f"Query processed in {processing_time:.2f}s")
+            return ChatResponse(
+                answer=answer,
+                products=products[: request.max_products] if products else None,
+                query_type=request.query_type or detected_query_type,
+                sources_count=len(retrieval_result.get("documents", [])),
+                session_id=request.session_id,
+            )
 
-        return ChatResponse(
-            answer=answer,
-            products=products[: request.max_products] if products else None,
-            query_type=request.query_type or detected_query_type,
-            sources_count=len(retrieval_result.get("documents", [])),
-            session_id=request.session_id,
-        )
+        except ValidationError as e:
+            logger.error(f"Validation error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+            )
+        except Exception as e:
+            logger.error(f"Chat processing error: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An error occurred while processing your request",
+            )
 
-    except ValidationError as e:
-        logger.error(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
-        )
+
+async def run_ingestion_background(request: IngestRequest):
+    """Background task for data ingestion."""
+    global ingestion_status, rag_system
+    
+    try:
+        # Update status
+        ingestion_status.update({
+            "status": "running",
+            "progress": 0,
+            "message": "Starting ingestion process",
+            "start_time": datetime.now(),
+            "end_time": None,
+            "error": None
+        })
+        
+        logger.info("Starting background data ingestion process")
+        
+        # Set environment variables for ingestion
+        os.environ["RAG_CHUNK_SIZE"] = str(request.chunk_size)
+        os.environ["RAG_CHUNK_OVERLAP"] = str(request.chunk_overlap)
+        
+        # Update progress
+        ingestion_status.update({"progress": 20, "message": "Loading and processing data"})
+        
+        # Run ingestion operations in thread pool to avoid blocking
+        documents = await asyncio.to_thread(ingest.load_and_process_data, ingest.DATA_PATH)
+        
+        ingestion_status.update({"progress": 50, "message": "Chunking documents"})
+        chunks = await asyncio.to_thread(ingest.chunk_documents, documents)
+        
+        ingestion_status.update({"progress": 80, "message": "Creating vector store"})
+        vector_store = await asyncio.to_thread(ingest.create_and_save_vector_store, chunks)
+        
+        # Reinitialize RAG system with new index
+        try:
+            if rag_system:
+                rag_system = RAGSystem()
+                await rag_system.initialize()
+                logger.info("RAG system reinitialized with new index")
+        except Exception as e:
+            logger.warning(f"Failed to reinitialize RAG system: {e}")
+        
+        # Update final status
+        ingestion_status.update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Ingestion completed successfully",
+            "end_time": datetime.now(),
+            "chunks_indexed": len(chunks),
+            "products_processed": len(documents)
+        })
+        
+        logger.info(f"Background ingestion completed: {len(chunks)} chunks, {len(documents)} products")
+        
     except Exception as e:
-        logger.error(f"Chat processing error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while processing your request",
-        )
-
+        logger.error(f"Background ingestion error: {e}", exc_info=True)
+        ingestion_status.update({
+            "status": "failed",
+            "message": f"Ingestion failed: {str(e)}",
+            "end_time": datetime.now(),
+            "error": str(e)
+        })
 
 @app.post("/ingest", response_model=IngestResponse)
-async def ingest_data(request: IngestRequest = IngestRequest()):
-    """Trigger data ingestion and vector store creation."""
+async def ingest_data(background_tasks: BackgroundTasks, request: IngestRequest = IngestRequest()):
+    """Trigger data ingestion and vector store creation as background task."""
     try:
-        start_time = time.time()
+        logger.info("Received ingestion request")
 
-        logger.info("Starting data ingestion process")
+        # Check if ingestion is already running
+        if ingestion_status["status"] == "running":
+            return IngestResponse(
+                status="already_running",
+                chunks_indexed=ingestion_status.get("chunks_indexed", 0),
+                products_processed=ingestion_status.get("products_processed", 0),
+                index_path=get_index_path_for_response(),
+                embedding_model=os.getenv(
+                    "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+                ),
+                processing_time_seconds=0,
+            )
 
         # Check if index exists and force_reindex is False
         if check_index_exists() and not request.force_reindex:
@@ -276,28 +372,18 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
                 processing_time_seconds=0,
             )
 
-        # Set environment variables for ingestion
-        os.environ["RAG_CHUNK_SIZE"] = str(request.chunk_size)
-        os.environ["RAG_CHUNK_OVERLAP"] = str(request.chunk_overlap)
-
-        # Run ingestion
-        documents = ingest.load_and_process_data(ingest.DATA_PATH)
-        chunks = ingest.chunk_documents(documents)
-        vector_store = ingest.create_and_save_vector_store(chunks)
-
-        processing_time = time.time() - start_time
-
-        logger.info(f"Ingestion completed in {processing_time:.2f}s")
-
+        # Start background ingestion
+        background_tasks.add_task(run_ingestion_background, request)
+        
         return IngestResponse(
-            status="completed",
-            chunks_indexed=len(chunks),
-            products_processed=len(documents),
-            index_path=get_index_path_for_response(vector_store),
+            status="started",
+            chunks_indexed=0,
+            products_processed=0,
+            index_path=get_index_path_for_response(),
             embedding_model=os.getenv(
                 "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
             ),
-            processing_time_seconds=processing_time,
+            processing_time_seconds=0,
         )
 
     except FileNotFoundError as e:
@@ -306,10 +392,10 @@ async def ingest_data(request: IngestRequest = IngestRequest()):
             status_code=status.HTTP_404_NOT_FOUND, detail="Product data file not found"
         )
     except Exception as e:
-        logger.error(f"Ingestion error: {e}", exc_info=True)
+        logger.error(f"Ingestion request error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ingestion failed: {str(e)}",
+            detail=f"Failed to start ingestion: {str(e)}",
         )
 
 
@@ -347,20 +433,27 @@ async def clear_session(session_id: str, rag: RAGSystem = Depends(get_rag_system
 @app.get("/retrieve/{query}")
 async def retrieve_documents(query: str, rag: RAGSystem = Depends(get_rag_system)):
     """Retrieve relevant documents without generating a response."""
-    try:
-        result = rag.retrieve(query)
-        return {
-            "query": query,
-            "query_type": result["query_type"],
-            "products": result["products"],
-            "document_count": len(result["documents"]),
-        }
-    except Exception as e:
-        logger.error(f"Document retrieval error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve documents",
-        )
+    async with query_semaphore:
+        try:
+            result = await rag.retrieve(query)
+            return {
+                "query": query,
+                "query_type": result["query_type"],
+                "products": result["products"],
+                "document_count": len(result["documents"]),
+            }
+        except Exception as e:
+            logger.error(f"Document retrieval error: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve documents",
+            )
+
+
+@app.get("/ingest/status")
+async def get_ingestion_status():
+    """Get current ingestion status and progress."""
+    return ingestion_status
 
 
 # Error handlers
